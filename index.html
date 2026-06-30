@@ -1913,10 +1913,23 @@ async function doCodeLogin(){
     ME.code = code;
     
     authShowMessage('code', 'Access granted! Welcome, ' + ME.name.split(' ')[0], 'success');
-    
-    setTimeout(() => {
+
+    // Enter the app immediately after successful auth to avoid overlay race conditions.
+    try {
       persistSession();
-    }, 800);
+    } catch (sessionErr) {
+      console.error('Post-login transition error:', sessionErr);
+      const overlay = $('authOverlay');
+      if (overlay) {
+        overlay.style.opacity = '0';
+        overlay.style.pointerEvents = 'none';
+        overlay.classList.add('hidden');
+      }
+      paintUser();
+      applyRoleLayout();
+      renderAll();
+      go('dashboard');
+    }
     
   } catch(error){
     console.error('Login error:', error);
