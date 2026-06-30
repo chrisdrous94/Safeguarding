@@ -2007,9 +2007,29 @@ async function doEmailRequest(){
 }
 const authHeader = ()=> ({ 'Content-Type':'application/json', 'Authorization':`Bearer ${ME.code}` });
 
+function persistSession(){
+  LS.set('ics_auth', JSON.stringify({
+    name: ME.name,
+    role: ME.role,
+    userId: ME.userId,
+    code: ME.code,
+    expires: new Date(Date.now()+8*3600000).toISOString()
+  }));
+  LS.set('ics_name', ME.name);
+  LS.set('ics_role', ME.role);
+
+  hideAuthOverlay();
+  paintUser();
+  applyRoleLayout();
+  renderAll();
+  go('dashboard');
+  if(SOURCE==='live' && SCRIPT_URL) syncData();
+}
+
 function hideAuthOverlay(){
   const el=$('authOverlay'); if(!el) return;
   el.style.opacity='0';
+  el.style.pointerEvents='none';
   setTimeout(()=>el.classList.add('hidden'), 380);
 }
 
