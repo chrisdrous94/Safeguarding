@@ -843,50 +843,6 @@ function renderBodyNotes(markers){
 
 function updateBodyNote(i, val){ if(!reportBodyMap || !reportBodyMap[i]) return; reportBodyMap[i].note = val; }
 
-    { assignee:'Dana Stavrou', agencies:['Police','Social','EarlyHelp'] });
-  push(1,'Mental health','Low mood / anxiety','High','Monitoring','Repeated visits to medical room citing stomach pains; pattern around maths lessons. Mother reports poor sleep.',9,'Tom Reilly',{assignee:'Dana Stavrou'});
-  push(3,'Online safety','Sharing of images','High','In progress','Pupil disclosed that an image was shared in a year-group chat without consent. Device not at school. Parents informed.',4,'Marcus Bell',
-    { agencies:['Police'], location:'Reported in form time' });
-  push(6,'Neglect','Hunger / food poverty','Medium','Monitoring','Consistently arriving without breakfast and asking peers for food. Uniform worn and unwashed. Offered breakfast club place.',12,'Sofia Costa',{agencies:['EarlyHelp']});
-  push(2,'Other welfare','Young carer pressure','Medium','In progress','Pupil caring for a parent with reduced mobility; frequently late and tired. Young Carers service to be contacted.',7,'Priya Anand',{agencies:['EarlyHelp']});
-  push(11,'Exploitation (CSE/CCE)','County lines','Critical','Referred','Unexplained new phone and cash; associating with older males off-site. Two unauthorised absences this week. Strategy discussion requested.',3,'Dana Stavrou',
-    { assignee:'Dana Stavrou', agencies:['Police','Social'], location:'Off-site / town centre' });
-  push(0,'Child-on-child','Bullying','Medium','In progress','Targeted name-calling about appearance, ongoing for two weeks. Three pupils involved. Restorative meeting planned.',5,'Tom Reilly',{location:'Year 7 corridor'});
-  push(4,'Attendance','Persistent absence','High','Monitoring','Attendance dropped to 78%. No medical evidence. Home visit by attendance officer arranged.',8,'Marcus Bell',{agencies:['EarlyHelp']});
-  push(7,'Child-on-child','Sexual harassment','High','In progress','Report of inappropriate comments and unwanted contact toward pupil in corridor. Witness statements taken.',6,'Priya Anand',{agencies:[]});
-  push(10,'Radicalisation','Online radicalisation','Medium','Monitoring','English teacher flagged concerning written content referencing extremist forums. Curriculum / Prevent lead informed.',14,'Marcus Bell',{agencies:[]});
-  push(13,'Emotional abuse','Excessive control','Medium','New','Pupil describes strict monitoring of all communication at home and fear of punishment for minor issues.',1,'Sofia Costa',{});
-  push(5,'Mental health','Disordered eating','High','In progress','Pupil restricting food at lunch; noticeable weight change reported by PE staff. Parents to be contacted sensitively.',10,'Tom Reilly',{agencies:['Health','CAMHS'],assignee:'Dana Stavrou'});
-  push(8,'Online safety','Cyberbullying','Low','Resolved','Group chat exclusion resolved through PSHE intervention and parental contact. No further incidents.',26,'Marcus Bell',{});
-  push(12,'Neglect','Medical neglect','Medium','Resolved','Repeated missed medical appointments addressed with family; Early Help closed positively.',34,'Sofia Costa',{agencies:['EarlyHelp','Health']});
-  push(0,'Physical abuse','Unexplained injury','High','Resolved','Bruising to upper arm; explanation consistent and corroborated. No further action after review.',40,'Priya Anand',{});
-  push(2,'Attendance','Unexplained absence','Low','Resolved','Short pattern of absence linked to family event; now resolved.',22,'Tom Reilly',{});
-
-  // enrich a couple of cases with extra chronology + actions
-  const dana='Dana Stavrou';
-  const c0=C[0];
-  c0.actions=[
-    { id:uid('a_'), text:'Refer to CAMHS via single point of access', owner:dana, due:new Date(now-1*day).toISOString(), done:true },
-    { id:uid('a_'), text:'Daily check-in with key adult for two weeks', owner:'Priya Anand', due:new Date(now+5*day).toISOString(), done:false },
-    { id:uid('a_'), text:'Safety plan agreed with pupil and parents', owner:dana, due:new Date(now+1*day).toISOString(), done:false }
-  ];
-  c0.timeline=[
-    { time:new Date(now-0.4*day).toISOString(), author:dana, type:'note', text:'Spoke with mother; she is supportive and will attend safety planning meeting Thursday.' },
-    { time:new Date(now-1*day).toISOString(), author:dana, type:'action', text:'CAMHS referral submitted.' },
-    { time:new Date(now-2*day).toISOString(), author:'Priya Anand', type:'log', text:'Concern logged.' }
-  ];
-  const c6=C[6];
-  c6.timeline=[
-    { time:new Date(now-2.5*day).toISOString(), author:dana, type:'note', text:'Strategy discussion held with social care and police; agreed to monitor associates and complete return-to-school interviews after any absence.' },
-    { time:new Date(now-3*day).toISOString(), author:dana, type:'log', text:'Concern logged.' }
-  ];
-  c6.actions=[{ id:uid('a_'), text:'Complete return-from-missing interview', owner:dana, due:new Date(now-1*day).toISOString(), done:false }];
-
-  DB.cases=C;
-  DB.audit=[];
-  C.slice().reverse().forEach(c=>logAudit('Concern logged', `${c.category} · ${c.studentName}`, c.reporter, c.date));
-  logAudit('Case referred', 'Op Encompass · '+DB.students[9].name, dana, new Date(now-1*day).toISOString());
-}
 </script>
 <script>
 // ---------- Persistence (safe: degrades to memory in sandboxes) ----------
@@ -1701,14 +1657,24 @@ async function doEmailRequest(){
       authShowMessage('email', 'Server unavailable. Make sure you\'re accessing the app at http://localhost:3000', 'error');
       return;
     }
-    
+
     const response = await fetch('/api/verify-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email })
     });
-    
-    const data = await response.json();
+
+    const contentType = response.headers.get('content-type') || '';
+    const isJson = contentType.includes('application/json');
+    const payload = isJson ? await response.json() : await response.text();
+
+    if(!response.ok){
+      const msg = isJson && payload && payload.error
+        ? payload.error
+        : 'Email service is not available right now. Restart the server and try again.';
+      authShowMessage('email', msg, 'error');
+      return;
+    }
     
     // Always show success message for privacy
     authShowMessage('email', 'Check your email inbox (and spam folder) for your access code. It may take a minute to arrive.', 'success');
@@ -1722,7 +1688,7 @@ async function doEmailRequest(){
     
   } catch(error){
     console.error('Email request error:', error);
-    authShowMessage('email', 'Network error. Please check your connection and try again', 'error');
+    authShowMessage('email', 'Could not reach /api/verify-email. Confirm the app is opened at http://localhost:3000 and restart npm start.', 'error');
   } finally {
     if(btn){
       btn.disabled = false;
