@@ -617,6 +617,11 @@ tailwind.config = {
             </div>
           </details>
         </div>
+        <div class="space-y-2 pt-1">
+          <label class="block text-xs font-bold text-slate-600">API Base URL (for GitHub/deployed frontend)</label>
+          <input id="setApiBase" placeholder="https://your-backend.onrender.com" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-xs font-mono">
+          <p class="text-[11px] text-slate-400 font-medium">Leave blank for local same-origin API. Set this when frontend and backend are hosted separately.</p>
+        </div>
       </div>
       <!-- demo reset removed in production build -->
     </div>
@@ -768,6 +773,7 @@ let DB = { students:[], cases:[], audit:[] };
 let ME = { name:'', role:'Teacher', userId:'', code:'' };
 let SOURCE = 'live';
 let SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzhtLUPYd1Xe2y9M8KjVtqa9ucSnO_HmQQzqGKec5y4qFskmdNPr88VsB3AChYOvTf4/exec';
+let API_BASE_URL = '';
 let conView = 'board';
 let taskFilter = 'open';
 let activeCaseId = null;
@@ -786,6 +792,13 @@ const fmtTime = d => new Date(d).toLocaleTimeString('en-GB',{hour:'2-digit',minu
 const daysBetween = (a,b) => Math.round((new Date(b)-new Date(a))/86400000);
 const initials = n => n.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
 const isOpen = c => c.status !== 'Resolved';
+const normalizeApiBase = (url='') => String(url||'').trim().replace(/\/+$/,'');
+const getApiBase = () => normalizeApiBase(API_BASE_URL);
+const apiUrl = (path) => {
+  const p = path.startsWith('/') ? path : `/${path}`;
+  const base = getApiBase();
+  return base ? `${base}${p}` : p;
+};
 function icons(){ if(window.lucide) lucide.createIcons(); }
 
 function toast(msg, type='success'){
@@ -861,6 +874,7 @@ function loadPrefs(){
   ME.role = LS.get('ics_role') || ME.role;
   SOURCE  = LS.get('ics_source') || 'live';
   SCRIPT_URL = LS.get('ics_url') || SCRIPT_URL;
+  API_BASE_URL = normalizeApiBase(LS.get('ics_api_base') || '');
 }
 
 // ---------- Audit ----------
@@ -934,14 +948,17 @@ function setSource(s){
 function openSettingsModal(){
   if($('setName')) $('setName').value=ME.name;
   if($('setRole')) $('setRole').value=ME.role;
+  if($('setApiBase')) $('setApiBase').value=API_BASE_URL;
   openModal('settingsModal');
 }
 function saveSettings(){
   ME.name=$('setName')?.value.trim()||ME.name;
   ME.role=$('setRole')?.value||ME.role;
   SCRIPT_URL=$('setUrl').value.trim();
+  API_BASE_URL = normalizeApiBase($('setApiBase')?.value || '');
   LS.set('ics_name',ME.name); LS.set('ics_role',ME.role);
   LS.set('ics_source',SOURCE); LS.set('ics_url',SCRIPT_URL);
+  LS.set('ics_api_base',API_BASE_URL);
   LS.set('ics_auth', JSON.stringify({ name:ME.name, role:ME.role, expires:new Date(Date.now()+8*3600000).toISOString() }));
   paintUser(); applyRoleLayout(); closeModal('settingsModal');
   toast('Settings saved');
@@ -1589,7 +1606,7 @@ async function doCodeLogin(){
       return;
     }
     
-    const response = await fetch('/api/login', {
+    const response = await fetch(apiUrl('/api/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code })
@@ -1658,7 +1675,7 @@ async function doEmailRequest(){
       return;
     }
 
-    const response = await fetch('/api/verify-email', {
+    const response = await fetch(apiUrl('/api/verify-email'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email })
@@ -1688,7 +1705,7 @@ async function doEmailRequest(){
     
   } catch(error){
     console.error('Email request error:', error);
-    authShowMessage('email', 'Could not reach /api/verify-email. Confirm the app is opened at http://localhost:3000 and restart npm start.', 'error');
+    authShowMessage('email', `Could not reach ${apiUrl('/api/verify-email')}. Confirm the backend is running and API Base URL is correct.`, 'error');
   } finally {
     if(btn){
       btn.disabled = false;
@@ -1787,7 +1804,7 @@ async function renderUsers(){
   const el=$('usersList'); if(!el) return;
   el.innerHTML=`<div class="py-10 text-center text-slate-400 text-sm font-medium"><i data-lucide="loader-circle" class="w-5 h-5 animate-spin mx-auto mb-2"></i>Loading…</div>`; icons();
   try{
-    const res=await fetch('/api/admin/users',{headers:authHeader()});
+    const res=await fetch(apiUrl('/api/admin/users'),{headers:authHeader()});
     const data=await res.json();
     if(!data.ok){ el.innerHTML=emptyState('alert-circle','Could not load users',data.error||''); return; }
     const users=data.users;
@@ -1873,7 +1890,7 @@ async function saveUser(){
   if(!first||!last){ toast('Enter first and last name','warning'); return; }
   const isEdit=!!id;
   try{
-    const res=await fetch(isEdit?`/api/admin/users/${id}`:'/api/admin/users',{
+    const res=await fetch(apiUrl(isEdit?`/api/admin/users/${id}`:'/api/admin/users'),{
       method:isEdit?'PUT':'POST', headers:authHeader(),
       body:JSON.stringify({firstName:first,lastName:last,role})
     });
@@ -1890,7 +1907,7 @@ async function saveUser(){
 async function adminRegenCode(id, name){
   if(!confirm(`Generate a new access code for ${name}?\nTheir current code will stop working immediately.`)) return;
   try{
-    const res=await fetch(`/api/admin/users/${id}/regenerate`,{method:'POST',headers:authHeader()});
+    const res=await fetch(apiUrl(`/api/admin/users/${id}/regenerate`),{method:'POST',headers:authHeader()});
     const data=await res.json();
     if(!data.ok){ toast(data.error||'Failed','error'); return; }
     showCodeReveal(name, data.code, 'New access code');
@@ -1901,7 +1918,7 @@ async function adminRegenCode(id, name){
 async function adminToggle(id, name, active){
   if(!confirm(`${active?'Revoke':'Restore'} access for ${name}?`)) return;
   try{
-    const res=await fetch(`/api/admin/users/${id}/toggle`,{method:'POST',headers:authHeader()});
+    const res=await fetch(apiUrl(`/api/admin/users/${id}/toggle`),{method:'POST',headers:authHeader()});
     const data=await res.json();
     if(!data.ok){ toast(data.error||'Failed','error'); return; }
     toast(data.active?`Access restored — ${name}`:`Access revoked — ${name}`, data.active?'success':'warning');
@@ -1912,7 +1929,7 @@ async function adminToggle(id, name, active){
 async function adminDelete(id, name){
   if(!confirm(`Permanently delete ${name}?\nThis cannot be undone.`)) return;
   try{
-    const res=await fetch(`/api/admin/users/${id}`,{method:'DELETE',headers:authHeader()});
+    const res=await fetch(apiUrl(`/api/admin/users/${id}`),{method:'DELETE',headers:authHeader()});
     const data=await res.json();
     if(!data.ok){ toast(data.error||'Failed','error'); return; }
     toast(`${name} deleted`);
