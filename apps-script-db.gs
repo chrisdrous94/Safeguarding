@@ -140,6 +140,7 @@ function getCases(){
   const headers = rows[0] || [];
   const hasJson = headers.indexOf('payloadJson') >= 0 || headers.indexOf('actions') >= 0;
   const cases = [];
+  const byId = {};
   for(let i=1;i<rows.length;i++){
     const row = rows[i];
     if(String(row.join('')).trim()==='') continue;
@@ -163,15 +164,18 @@ function getCases(){
         timeline: parseJsonCell(row[15], []),
         actions: parseJsonCell(row[16], [])
       };
-      cases.push({
+      const out = {
+        id:c.id,
         rowId:i+1,
         timestamp:c.date,
         reporterName:c.reporter,
+        studentId:c.studentId,
         studentName:c.studentName,
         grade:c.year,
         category:c.category,
         severity:c.risk,
         description:c.description,
+        location:c.location,
         status:c.status,
         assignee:c.assignee,
         agencies:Array.isArray(c.agencies) ? c.agencies.join(',') : String(c.agencies||''),
@@ -179,23 +183,31 @@ function getCases(){
         timeline:c.timeline,
         actions:c.actions,
         payload:c
-      });
+      };
+      // Keep the latest row for each case id to collapse pre-existing duplicate updates.
+      byId[c.id] = out;
       continue;
     }
-    cases.push({
+    const legacyId = row[0] || ('legacy_' + (i+1));
+    const outLegacy = {
+      id:legacyId,
       rowId:i+1,
       timestamp:row[0],
       reporterName:row[1],
+      studentId:'',
       studentName:row[5],
       grade:row[6],
       category:row[11],
       severity:row[12]||'',
       description:row[12],
+      location:'',
       status:row[20]||'New',
       assignee:row[21]||'',
       agencies:row[22]||''
-    });
+    };
+    byId[legacyId] = outLegacy;
   }
+  Object.keys(byId).forEach(function(k){ cases.push(byId[k]); });
   return { ok:true, status:'success', data:cases };
 }
 
@@ -228,8 +240,9 @@ function upsertCaseRecord(payload){
   const idx = cases.findIndex(function(x){ return x.id === c.id; });
   const row = [c.id,c.date,c.reporter,c.studentId,c.studentName,c.year,c.category,c.subcategory,c.risk,c.status,c.description,c.location,c.assignee,JSON.stringify(c.agencies),JSON.stringify(c.bodyMap),JSON.stringify(c.timeline),JSON.stringify(c.actions)];
   if(idx >= 0){
-    sh.getRange(idx + 2, 1, 1, row.length).setValues([row]);
-    return { ok:true, rowId: idx + 2, case:c };
+    const targetRow = Number(cases[idx].rowId || (idx + 2));
+    sh.getRange(targetRow, 1, 1, row.length).setValues([row]);
+    return { ok:true, rowId: targetRow, case:c };
   }
   sh.appendRow(row);
   return { ok:true, rowId: sh.getLastRow(), case:c };
