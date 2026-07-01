@@ -126,9 +126,8 @@ tailwind.config = {
 
 <!-- ===================== SIDEBAR (desktop) ===================== -->
 <aside class="hidden md:flex md:flex-col w-64 shrink-0 bg-card border-r border-line h-screen sticky top-0">
-  <div class="px-5 h-20 flex items-center gap-3 border-b border-line">
-    <img src="https://icanskill.com/_ipx/_/img/logo/ican.svg" alt="I CAN School" class="h-10 w-auto object-contain shrink-0">
-    <div class="text-[10px] font-bold tracking-[.18em] uppercase text-brand">Safeguarding</div>
+  <div class="px-5 h-20 flex items-center justify-center border-b border-line">
+    <img src="https://icanskill.com/_ipx/_/img/logo/ican.svg" alt="I CAN School Safeguarding" class="h-10 w-full max-w-[210px] object-contain">
   </div>
   <nav class="flex-1 p-3 space-y-1 overflow-y-auto scroll-thin">
     <p class="px-3 pt-3 pb-1.5 text-[10px] font-bold tracking-widest uppercase text-slate-400">Workspace</p>
@@ -694,8 +693,8 @@ tailwind.config = {
     </div>
     <h3 class="font-display font-bold text-ink mb-1" id="codeRevealTitle">Access code created</h3>
     <p class="text-xs text-slate-400 font-medium mb-5" id="codeRevealSub">Share this code with the user — it will not be shown again</p>
-    <div class="bg-dim border border-line rounded-2xl px-6 py-5 mb-5">
-      <p id="codeRevealCode" class="font-display font-extrabold text-4xl tracking-[.35em] text-brand select-all"></p>
+    <div class="bg-dim border border-line rounded-2xl px-4 py-4 mb-5 overflow-hidden">
+      <p id="codeRevealCode" class="font-display font-extrabold text-xl sm:text-2xl tracking-[.16em] leading-tight break-all text-brand select-all"></p>
     </div>
     <button onclick="copyRevealCode()" class="w-full h-11 rounded-full bg-brand hover:bg-brandDark text-white text-sm font-bold flex items-center justify-center gap-2 mb-3 shadow-soft transition-colors">
       <i data-lucide="copy" class="w-4 h-4"></i>Copy code
