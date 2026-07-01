@@ -916,14 +916,22 @@ function logAudit(action, detail, who, when){
 function visibleCases(){
   if(ME.role==='Lead DSL' || ME.role==='Senior Leadership') return DB.cases;
   const myName = (ME.name||'').toLowerCase().trim();
-  const assignedStudentIds = new Set(DB.cases.filter(c=>{
-    const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(s=>s.trim()).filter(Boolean);
-    return assigneeList.some(a => a.toLowerCase().trim() === myName);
-  }).map(c=>c.studentId));
-  return DB.cases.filter(c => {
-    const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(s=>s.trim()).filter(Boolean);
-    return assigneeList.some(a => a.toLowerCase().trim() === myName) || (c.reporter||'').toLowerCase().trim()===myName || assignedStudentIds.has(c.studentId);
-  });
+
+  const getAssignees = (assignee) => {
+    if(!assignee) return [];
+    if(Array.isArray(assignee)) return assignee.map(a => String(a).toLowerCase().trim());
+    return String(assignee).split(',').map(s => s.trim()).filter(Boolean).map(a => a.toLowerCase());
+  };
+
+  const isAssignedToMe = (c) => getAssignees(c.assignee).includes(myName);
+
+  const assignedStudentIds = new Set(DB.cases.filter(isAssignedToMe).map(c => c.studentId));
+
+  return DB.cases.filter(c =>
+    isAssignedToMe(c) ||
+    (c.reporter||'').toLowerCase().trim() === myName ||
+    assignedStudentIds.has(c.studentId)
+  );
 }
 function safeRisk(r){
   if(RISK[r]) return r;
