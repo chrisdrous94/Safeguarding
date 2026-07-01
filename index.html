@@ -983,6 +983,11 @@ function paintUser(){
 }
 
 // ---------- Sync (Google Sheet, optional) ----------
+function safeDate(v){
+  if(!v) return new Date().toISOString();
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+}
 async function syncData(){
   if(SOURCE!=='live' || !SCRIPT_URL){ renderAll(); toast('Refreshed','info'); return; }
   const ic=$('syncIcon'); ic.classList.add('animate-spin');
@@ -990,15 +995,29 @@ async function syncData(){
     const res=await fetch(SCRIPT_URL+'?action=getCases');
     const data=JSON.parse(await res.text());
     if(data.status!=='success') throw new Error(data.message||'Sync failed');
-    // map sheet rows into native model where possible
-    DB.cases=(data.data||[]).map(r=>({
-      id:'row_'+r.rowId, rowId:r.rowId, studentId:'sheet_'+(r.studentName||'').replace(/\W/g,''),
-      studentName:r.studentName||'Unknown', year:r.grade||'N/A', category:r.category||'Other welfare',
-      subcategory:'', risk:(r.severity&&/crit/i.test(r.severity))?'Critical':'Medium',
-      status:r.status||'New', description:r.description||'', reporter:r.reporterName||'Anonymous',
-      assignee:r.assignee||'', date:r.timestamp||new Date().toISOString(),
-      agencies:(r.agencies||'').split(',').filter(Boolean), actions:[], timeline:[], bodyMap:[]
-    }));
+    DB.cases=(data.data||[]).map(r=>{
+      const p = r.payload || {};
+      return {
+        id: p.id || r.id || ('row_'+r.rowId),
+        rowId: r.rowId,
+        studentId: p.studentId || r.studentId || ('sid_'+(p.studentName||r.studentName||'').replace(/\W/g,'')),
+        studentName: p.studentName || r.studentName || 'Unknown',
+        year: p.year || r.grade || '',
+        category: p.category || r.category || 'Other welfare',
+        subcategory: p.subcategory || r.subcategory || '',
+        risk: p.risk || r.severity || 'Medium',
+        status: p.status || r.status || 'New',
+        description: p.description || r.description || '',
+        location: p.location || r.location || '',
+        reporter: p.reporter || r.reporterName || '',
+        assignee: p.assignee || r.assignee || '',
+        date: safeDate(p.date || r.timestamp),
+        agencies: Array.isArray(p.agencies) ? p.agencies : (r.agencies ? String(r.agencies).split(',').filter(Boolean) : []),
+        bodyMap: Array.isArray(p.bodyMap) ? p.bodyMap : (Array.isArray(r.bodyMap) ? r.bodyMap : []),
+        timeline: Array.isArray(p.timeline) ? p.timeline : (Array.isArray(r.timeline) ? r.timeline : []),
+        actions: Array.isArray(p.actions) ? p.actions : (Array.isArray(r.actions) ? r.actions : [])
+      };
+    });
     rebuildStudentsFromCases();
     renderAll(); toast('Synced with Google Sheet');
   }catch(e){ toast(e.message,'error'); }
@@ -1382,7 +1401,9 @@ function changeStatus(){ const c=DB.cases.find(x=>x.id===activeCaseId); const v=
   persist(); renderCaseTimeline(c); renderAll(); toast('Status updated'); }
 function changeAssignee(){ const c=DB.cases.find(x=>x.id===activeCaseId); const v=$('caseAssignee').value;
   c.assignee=v; c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'note',text:v?`Assigned to ${v}.`:'Unassigned.'});
-  logAudit('Case reassigned', `${c.studentName} → ${v||'Unassigned'}`); if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c}); persist(); renderCaseTimeline(c); renderAll(); toast('Assignee updated'); }
+  logAudit('Case reassigned', `${c.studentName} → ${v||'Unassigned'}`);
+  if(SOURCE==='live'&&SCRIPT_URL){ postLive({action:'syncCase',payload:c}); if(v && CAN_USE_APPS_SCRIPT()) scriptGet('notifyAssignee',{assignee:v,caseId:c.id,studentName:c.studentName,category:c.category,notifier:ME.name}).catch(()=>{}); }
+  persist(); renderCaseTimeline(c); renderAll(); toast('Assignee updated — notification sent'); }
 function toggleAgency(key){ const c=DB.cases.find(x=>x.id===activeCaseId); c.agencies=c.agencies||[];
   const i=c.agencies.indexOf(key);
   if(i>-1){ c.agencies.splice(i,1); c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'agency',text:`Removed referral: ${AGENCIES[key].label}.`}); logAudit('Agency referral removed',`${c.studentName} · ${AGENCIES[key].label}`); }
@@ -1396,7 +1417,10 @@ function saveAction(){ const t=$('newActionText').value.trim(); if(!t){ toast('D
   const c=DB.cases.find(x=>x.id===activeCaseId);
   c.actions=c.actions||[]; c.actions.push({id:uid('a_'),text:t,owner:$('newActionOwner').value,due:$('newActionDue').value?new Date($('newActionDue').value).toISOString():'',done:false});
   c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'action',text:`Action added: ${t}`});
-  logAudit('Action created',`${c.studentName} · ${t}`); if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c}); persist(); closeModal('actionModal'); renderCaseActions(c); renderCaseTimeline(c); renderAll(); toast('Action added'); }
+  logAudit('Action created',`${c.studentName} · ${t}`);
+  const actionOwner=$('newActionOwner').value;
+  if(SOURCE==='live'&&SCRIPT_URL){ postLive({action:'syncCase',payload:c}); if(actionOwner && actionOwner!==ME.name && CAN_USE_APPS_SCRIPT()) scriptGet('notifyActionOwner',{owner:actionOwner,caseId:c.id,studentName:c.studentName,actionText:t,notifier:ME.name}).catch(()=>{}); }
+  persist(); closeModal('actionModal'); renderCaseActions(c); renderCaseTimeline(c); renderAll(); toast('Action added'); }
 function toggleAction(caseId,actId){ const c=DB.cases.find(x=>x.id===caseId); const a=c.actions.find(x=>x.id===actId); a.done=!a.done;
   if(a.done) c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'action',text:`Completed: ${a.text}`});
   if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c}); persist(); if(activeCaseId===caseId&&!$('caseModal').classList.contains('hidden')){ renderCaseActions(c); renderCaseTimeline(c); } renderAll(); renderTasks(); }
