@@ -889,8 +889,9 @@ function logAudit(action, detail, who, when){
 // ---------- Role-based visibility ----------
 function visibleCases(){
   if(ME.role==='Lead DSL' || ME.role==='Senior Leadership') return DB.cases;
-  const assignedStudentIds = new Set(DB.cases.filter(c=>c.assignee===ME.name).map(c=>c.studentId));
-  return DB.cases.filter(c => c.assignee===ME.name || c.reporter===ME.name || assignedStudentIds.has(c.studentId));
+  const myName = (ME.name||'').toLowerCase().trim();
+  const assignedStudentIds = new Set(DB.cases.filter(c=>(c.assignee||'').toLowerCase().trim()===myName).map(c=>c.studentId));
+  return DB.cases.filter(c => (c.assignee||'').toLowerCase().trim()===myName || (c.reporter||'').toLowerCase().trim()===myName || assignedStudentIds.has(c.studentId));
 }
 function safeRisk(r){
   if(RISK[r]) return r;
@@ -1028,6 +1029,7 @@ async function syncData(){
       };
     });
     rebuildStudentsFromCases();
+    persist();
     renderAll(); toast('Synced with Google Sheet');
   }catch(e){ toast(e.message,'error'); }
   finally{ ic.classList.remove('animate-spin'); }
@@ -1315,7 +1317,7 @@ function pickCategory(name){
   $('rSubcategory').innerHTML='<option value="">Select nature (optional)…</option>'+subs.map(s=>`<option>${s}</option>`).join('');
 }
 function pickRisk(r){ $('rRisk').value=r;
-  document.querySelectorAll('.rrisk').forEach(b=>{ const on=b.dataset.risk===r; const k=RISK[b.dataset.risk];
+  document.querySelectorAll('.rrisk').forEach(b=>{ const on=b.dataset.risk===r; const k=RISK[safeRisk(b.dataset.risk)];
     b.className=`rrisk h-12 rounded-2xl border-2 text-sm font-bold ${on?`border-${k.color} bg-${k.soft} text-${k.color}`:'border-line bg-card text-'+k.color}`; });
 }
 function submitConcern(){
@@ -1355,7 +1357,7 @@ async function postLive(body){
 function openCase(id){
   activeCaseId=id; const c=DB.cases.find(x=>x.id===id); if(!c) return;
   const s=studentById(c.studentId);
-  const k=RISK[c.risk];
+  const k=RISK[safeRisk(c.risk)];
   $('caseHeader').innerHTML = `<div class="flex items-center gap-3 min-w-0">${avatar(c.studentName,'w-12 h-12',c.risk)}
     <div class="min-w-0"><div class="flex items-center gap-2 flex-wrap"><button onclick="openStudent('${c.studentId}')" class="font-display font-bold text-lg text-ink hover:text-brand truncate">${esc(c.studentName)}</button>${riskBadge(c.risk)}</div>
     <div class="text-xs font-semibold text-slate-400 flex items-center gap-1.5"><i data-lucide="${catIcon(c.category)}" class="w-3.5 h-3.5"></i>${esc(c.category)}${c.subcategory?' · '+esc(c.subcategory):''} · ${esc(c.year)}</div></div></div>
@@ -2166,6 +2168,9 @@ function signOut(){
   LS.set('ics_role','');
   
   // Reset user state
+  LS.set('ics_db','');
+  DB = { students:[], cases:[], audit:[] };
+
   ME.name = '';
   ME.role = 'Teacher';
   ME.userId = '';
