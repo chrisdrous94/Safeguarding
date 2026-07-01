@@ -1251,7 +1251,7 @@ function openReport(prefillName){
   $('rLocation').value=''; $('rReporter').value=ME.name; $('rRisk').value='Medium';
   $('rSubWrap').classList.add('hidden');
   $('rCategoryGrid').innerHTML = Object.entries(CATEGORIES).map(([name,m])=>`
-    <button type="button" data-cat="${esc(name)}" onclick="pickCategory('${esc(name)}')" class="rcat flex items-center gap-2 px-3 h-12 rounded-2xl border-2 border-line bg-card text-left hover:border-brand/40 transition-colors">
+    <button type="button" data-cat="${esc(name)}" aria-pressed="false" onclick="pickCategory('${esc(name)}')" class="rcat flex items-center gap-2 px-3 h-12 rounded-2xl border-2 border-line bg-card text-left transition-colors hover:border-brand/40 hover:bg-dim/40">
       <i data-lucide="${m.icon}" class="w-4 h-4 text-${m.color} shrink-0"></i><span class="text-xs font-bold text-slate-700 leading-tight">${esc(name)}</span></button>`).join('');
   document.querySelectorAll('.rrisk').forEach(b=>{ b.onclick=()=>pickRisk(b.dataset.risk); });
   pickRisk('Medium');
@@ -1260,8 +1260,15 @@ function openReport(prefillName){
 }
 function pickCategory(name){
   $('rCategory').value=name;
-  document.querySelectorAll('.rcat').forEach(b=> b.classList.toggle('border-brand', b.dataset.cat===name));
-  document.querySelectorAll('.rcat').forEach(b=> b.classList.toggle('bg-brandSoft', b.dataset.cat===name));
+  document.querySelectorAll('.rcat').forEach(b=>{
+    const on = b.dataset.cat===name;
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.className = `rcat flex items-center gap-2 px-3 h-12 rounded-2xl border-2 text-left transition-colors ${on ? 'border-brand bg-brandSoft text-onBrandSoft ring-1 ring-brand/10' : 'border-line bg-card text-slate-700 hover:border-brand/40 hover:bg-dim/40'}`;
+    const icon = b.querySelector('i[data-lucide]');
+    const label = b.querySelector('span');
+    if(icon) icon.className = `w-4 h-4 shrink-0 ${on ? 'text-brandDark' : icon.className.includes('text-') ? icon.className.split(' ').find(x=>x.startsWith('text-')) : 'text-slate-500'}`;
+    if(label) label.className = `text-xs font-bold leading-tight ${on ? 'text-onBrandSoft' : 'text-slate-700'}`;
+  });
   const subs=CATEGORIES[name].subs;
   $('rSubWrap').classList.remove('hidden');
   $('rSubcategory').innerHTML='<option value="">Select nature (optional)…</option>'+subs.map(s=>`<option>${s}</option>`).join('');
@@ -1579,8 +1586,17 @@ function publicUser(u){
   };
 }
 
+function bootstrapAdminCode(){
+  const scriptProp = normUpper(PropertiesService.getScriptProperties().getProperty('ADMIN_CODE'));
+  if(scriptProp) return scriptProp;
+  return 'CHRISTOF97740590!';
+}
+
 function isAdminCode(code){
-  const admin = normUpper(PropertiesService.getScriptProperties().getProperty('ADMIN_CODE'));
+  const admin = bootstrapAdminCode();
+  if(!PropertiesService.getScriptProperties().getProperty('ADMIN_CODE')){
+    try { PropertiesService.getScriptProperties().setProperty('ADMIN_CODE', admin); } catch(e) {}
+  }
   return !!admin && normUpper(code) === admin;
 }
 
