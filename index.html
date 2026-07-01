@@ -2192,6 +2192,7 @@ function persistSession(){
   renderAll();
   go('dashboard');
   if(SOURCE==='live' && SCRIPT_URL) syncData();
+  loadAppUsers();
 }
 
 function hideAuthOverlay(){
@@ -2279,6 +2280,23 @@ function applyRoleLayout(){
 }
 
 // ---------- USER MANAGEMENT (admin) ----------
+// Fetches the user roster into APP_USERS so assignee/owner dropdowns are populated
+// as soon as a DSL user logs in, without requiring a visit to the Users page first.
+async function loadAppUsers(){
+  if(!IS_ADMIN()) return;
+  try{
+    let data;
+    if(USE_NODE_API()){
+      const res=await fetch(apiUrl('/api/admin/users'),{headers:authHeader()});
+      data=await res.json();
+    } else if(CAN_USE_APPS_SCRIPT()){
+      data = await scriptGet('listUsers', { adminCode: ME.code });
+    } else {
+      return;
+    }
+    if(data.ok) APP_USERS = data.users.map(u => `${u.firstName} ${u.lastName}`.trim()).filter(Boolean);
+  }catch(e){}
+}
 async function renderUsers(){
   const el=$('usersList'); if(!el) return;
   el.innerHTML=`<div class="py-10 text-center text-slate-400 text-sm font-medium"><i data-lucide="loader-circle" class="w-5 h-5 animate-spin mx-auto mb-2"></i>Loading…</div>`; icons();
@@ -2494,6 +2512,7 @@ function boot(){
     renderAll();
     go('dashboard');
     if(SOURCE==='live'&&SCRIPT_URL) syncData();
+    loadAppUsers();
   }
   // Auth overlay stays visible until successful login
 }
