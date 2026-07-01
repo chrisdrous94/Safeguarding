@@ -425,23 +425,26 @@ function findUserByName(name){
 }
 
 function notifyAssignee(assignee, caseId, studentName, category, notifier){
-  const u = findUserByName(assignee);
-  if(!u || !u.email) return { ok:true, skipped:'no email registered' };
-  try {
-    MailApp.sendEmail({
-      to: u.email,
-      subject: '[Safeguarding] You have been assigned a case: ' + studentName,
-      body: 'You have been assigned to a safeguarding case by ' + (notifier||'the system') + '.\n\n'
-          + 'Student: ' + studentName + '\n'
-          + 'Category: ' + category + '\n'
-          + 'Case reference: ' + caseId + '\n\n'
-          + 'Please log in to review the full case record, chronology and any outstanding actions.\n\n'
-          + 'This is an automated notification. Do not reply to this email.'
-    });
-    return { ok:true };
-  } catch(err) {
-    return { ok:true, skipped:String(err) };
-  }
+  const names = String(assignee).split(',').map(s => s.trim()).filter(Boolean);
+  names.forEach(name => {
+    const u = findUserByName(name);
+    if(!u || !u.email) return { ok:true, skipped:`${name}: no email registered` };
+    try {
+      MailApp.sendEmail({
+        to: u.email,
+        subject: '[Safeguarding] You have been assigned a case: ' + studentName,
+        body: 'You have been assigned to a safeguarding case by ' + (notifier||'the system') + '.\n\n'
+            + 'Student: ' + studentName + '\n'
+            + 'Category: ' + category + '\n'
+            + 'Case reference: ' + caseId + '\n\n'
+            + 'Please log in to review the full case record, chronology and any outstanding actions.\n\n'
+            + 'This is an automated notification. Do not reply to this email.'
+      });
+    } catch(err) {
+      return { ok:true, skipped:String(err) };
+    }
+  });
+  return { ok:true };
 }
 
 function notifyActionOwner(owner, caseId, studentName, actionText, notifier){

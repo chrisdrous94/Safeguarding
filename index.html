@@ -520,7 +520,7 @@ tailwind.config = {
           <select id="caseStatus" onchange="changeStatus()" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-bold">
             <option>New</option><option>In progress</option><option>Monitoring</option><option>Referred</option><option>Resolved</option></select></div>
           <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Assigned to</h4>
-          <select id="caseAssignee" onchange="changeAssignee()" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-bold"></select></div>
+          <select id="caseAssignee" multiple onchange="changeAssignee()" class="w-full min-h-[100px] px-3 py-2 rounded-xl bg-dim border border-transparent text-sm font-bold"></select></div>
           <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Multi-agency referrals</h4>
             <div class="space-y-2" id="caseAgencies"></div>
           </div>
@@ -916,8 +916,14 @@ function logAudit(action, detail, who, when){
 function visibleCases(){
   if(ME.role==='Lead DSL' || ME.role==='Senior Leadership') return DB.cases;
   const myName = (ME.name||'').toLowerCase().trim();
-  const assignedStudentIds = new Set(DB.cases.filter(c=>(c.assignee||'').toLowerCase().trim()===myName).map(c=>c.studentId));
-  return DB.cases.filter(c => (c.assignee||'').toLowerCase().trim()===myName || (c.reporter||'').toLowerCase().trim()===myName || assignedStudentIds.has(c.studentId));
+  const assignedStudentIds = new Set(DB.cases.filter(c=>{
+    const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(s=>s.trim()).filter(Boolean);
+    return assigneeList.some(a => a.toLowerCase().trim() === myName);
+  }).map(c=>c.studentId));
+  return DB.cases.filter(c => {
+    const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(s=>s.trim()).filter(Boolean);
+    return assigneeList.some(a => a.toLowerCase().trim() === myName) || (c.reporter||'').toLowerCase().trim()===myName || assignedStudentIds.has(c.studentId);
+  });
 }
 function safeRisk(r){
   if(RISK[r]) return r;
@@ -947,10 +953,7 @@ function allActions(){
 function assigneeNames(){
   return [...new Set([
     ME.name,
-    ...APP_USERS,
-    ...DB.cases.map(c=>c.assignee).filter(Boolean),
-    ...DB.cases.map(c=>c.reporter).filter(Boolean),
-    ...TEAM
+    ...APP_USERS
   ].filter(Boolean))];
 }
 
@@ -1247,7 +1250,14 @@ function caseCard(c){
     <p class="text-xs text-slate-500 font-medium line-clamp-2 mb-3">${esc(c.description)}</p>
     <div class="flex flex-wrap gap-1.5 mb-3">${(c.agencies||[]).map(agencyChip).join('')}${(s?.flags||[]).slice(0,2).map(flagChip).join('')}</div>
     <div class="flex items-center justify-between pt-2 border-t border-line">
-      <div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400">${c.assignee?`<span class="w-5 h-5 rounded-full bg-dim grid place-items-center text-[9px] font-bold text-slate-500">${initials(c.assignee)}</span>${esc(c.assignee.split(' ')[0])}`:'<i data-lucide="user-minus" class="w-3.5 h-3.5"></i>Unassigned'}</div>
+      <div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400">${
+        (()=>{
+          const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(s=>s.trim()).filter(Boolean);
+          if(!assigneeList.length) return '<i data-lucide="user-minus" class="w-3.5 h-3.5"></i>Unassigned';
+          if(assigneeList.length===1) return `<span class="w-5 h-5 rounded-full bg-dim grid place-items-center text-[9px] font-bold text-slate-500">${initials(assigneeList[0])}</span>${esc(assigneeList[0].split(' ')[0])}`;
+          return `<span class="w-5 h-5 rounded-full bg-dim grid place-items-center text-[9px] font-bold text-slate-500">+${assigneeList.length-1}</span>${esc(assigneeList[0].split(' ')[0])}`;
+        })()
+      }</div>
       <div class="flex items-center gap-2">${acts?`<span class="text-[10px] font-bold text-med flex items-center gap-1"><i data-lucide="list-checks" class="w-3 h-3"></i>${acts}</span>`:''}${statusPill(c.status)}</div>
     </div>
   </div>`;
@@ -1270,7 +1280,7 @@ function renderConcerns(){
         <td class="px-4 py-3 hidden sm:table-cell"><span class="flex items-center gap-1.5 font-semibold text-slate-600"><i data-lucide="${catIcon(c.category)}" class="w-3.5 h-3.5 text-brand"></i>${esc(c.category)}</span></td>
         <td class="px-4 py-3">${riskBadge(c.risk)}</td>
         <td class="px-4 py-3 hidden md:table-cell">${statusPill(c.status)}</td>
-        <td class="px-4 py-3 hidden lg:table-cell text-slate-500 font-medium">${esc(c.assignee||'—')}</td>
+        <td class="px-4 py-3 hidden lg:table-cell text-slate-500 font-medium">${esc((Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(s=>s.trim()).filter(Boolean)).join(', ')||'—')}</td>
         <td class="px-4 py-3 hidden md:table-cell text-slate-400 font-medium">${fmtShort(c.date)}</td></tr>`).join('')||`<tr><td colspan="6" class="px-4 py-10 text-center text-slate-400 font-semibold">No concerns match your filters.</td></tr>`}</tbody></table>`;
   }
   icons();
@@ -1327,8 +1337,11 @@ function renderTasks(){
 }
 function exportCSV(){
   const rows=[['Student','Year','Category','Subcategory','Risk','Status','Assignee','Reporter','Department','Strategies implemented','Agencies','Logged','Description']];
-  filteredConcerns().forEach(c=> rows.push([c.studentName,c.year,c.category,c.subcategory,c.risk,c.status,c.assignee,c.reporter,c.department||'—',(c.strategies||[]).map(key=>STRATEGIES[key]?.label||key).join(' | '),
-    (c.agencies||[]).join(' | '),fmtDate(c.date),(c.description||'').replace(/\s+/g,' ')]));
+  filteredConcerns().forEach(c=> {
+    const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(s=>s.trim()).filter(Boolean);
+    rows.push([c.studentName,c.year,c.category,c.subcategory,c.risk,c.status,assigneeList.join('; '),c.reporter,c.department||'—',(c.strategies||[]).map(key=>STRATEGIES[key]?.label||key).join(' | '),
+      (c.agencies||[]).join(' | '),fmtDate(c.date),(c.description||'').replace(/\s+/g,' ')]);
+  });
   downloadCSV(rows, `safeguarding-concerns-${new Date().toISOString().slice(0,10)}.csv`);
   logAudit('Report exported','Concerns CSV'); persist(); toast('Export downloaded');
 }
@@ -1456,7 +1469,7 @@ function submitConcern(){
     department:$('rDepartment').value||'', strategies:strategies,
     status:'New', description:$('rDesc').value.trim()||'No description provided.',
     location:$('rLocation').value.trim()||'—', reporter:reporterName,
-    assignee:s.keyAdult||ME.name, date:now,
+    assignee:'', date:now,
     agencies:[], actions:[], bodyMap:reportBodyMap.filter(m=>true),
     timeline:[{time:now,author:reporterName,type:'log',text:'Concern logged.'}] };
   DB.cases.unshift(c);
@@ -1499,7 +1512,8 @@ function openCase(id){
   }
   $('caseStatus').value=c.status;
   const assignees=assigneeNames();
-  $('caseAssignee').innerHTML='<option value="">Unassigned</option>'+assignees.map(t=>`<option ${t===c.assignee?'selected':''}>${esc(t)}</option>`).join('');
+  const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(s=>s.trim()).filter(Boolean);
+  $('caseAssignee').innerHTML='<option value="">Unassigned</option>'+assignees.map(t=>`<option ${assigneeList.includes(t)?'selected':''}>${esc(t)}</option>`).join('');
   // agencies
   $('caseAgencies').innerHTML = Object.entries(AGENCIES).map(([key,a])=>{ const on=(c.agencies||[]).includes(key);
     return `<button onclick="toggleAgency('${key}')" class="w-full flex items-center justify-between px-3 h-11 rounded-xl border-2 ${on?`border-${a.color} bg-${a.color}Soft`:'border-line bg-card'} transition-colors">
@@ -1536,11 +1550,18 @@ function changeStatus(){ const c=DB.cases.find(x=>x.id===activeCaseId); const v=
   c.status=v; c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'status',text:`Status changed to ${v}.`});
   logAudit('Status updated', `${c.studentName} → ${v}`); if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
   persist(); renderCaseTimeline(c); renderAll(); toast('Status updated'); }
-function changeAssignee(){ const c=DB.cases.find(x=>x.id===activeCaseId); const v=$('caseAssignee').value;
-  c.assignee=v; c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'note',text:v?`Assigned to ${v}.`:'Unassigned.'});
-  logAudit('Case reassigned', `${c.studentName} → ${v||'Unassigned'}`);
-  if(SOURCE==='live'&&SCRIPT_URL){ postLive({action:'syncCase',payload:c}); if(v && CAN_USE_APPS_SCRIPT()) scriptGet('notifyAssignee',{assignee:v,caseId:c.id,studentName:c.studentName,category:c.category,notifier:ME.name}).catch(()=>{}); }
-  persist(); renderCaseTimeline(c); renderAll(); toast('Assignee updated — notification sent'); }
+function changeAssignee(){ const c=DB.cases.find(x=>x.id===activeCaseId);
+  const selectedOptions = Array.from($('caseAssignee').selectedOptions).map(opt => opt.value).filter(Boolean);
+  c.assignee = selectedOptions.length ? selectedOptions.join(',') : '';
+  const assigneeText = selectedOptions.length ? `Assigned to ${selectedOptions.join(', ')}.` : 'Unassigned.';
+  c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'note',text:assigneeText});
+  logAudit('Case reassigned', `${c.studentName} → ${c.assignee||'Unassigned'}`);
+  if(SOURCE==='live'&&SCRIPT_URL){ postLive({action:'syncCase',payload:c});
+    if(selectedOptions.length) selectedOptions.forEach(assignee => {
+      CAN_USE_APPS_SCRIPT() && scriptGet('notifyAssignee',{assignee:assignee,caseId:c.id,studentName:c.studentName,category:c.category,notifier:ME.name}).catch(()=>{});
+    });
+  }
+  persist(); renderCaseTimeline(c); renderAll(); toast('Assignee updated — notifications sent'); }
 function toggleAgency(key){ const c=DB.cases.find(x=>x.id===activeCaseId); c.agencies=c.agencies||[];
   const i=c.agencies.indexOf(key);
   if(i>-1){ c.agencies.splice(i,1); c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'agency',text:`Removed referral: ${AGENCIES[key].label}.`}); logAudit('Agency referral removed',`${c.studentName} · ${AGENCIES[key].label}`); }
