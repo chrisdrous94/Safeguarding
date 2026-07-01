@@ -108,32 +108,131 @@ function requireAdmin(adminCode){
   const u = users.find(function(x){
     return x.active && x.codeHash === codeHash && (x.role==='Lead DSL' || x.role==='Senior Leadership');
   });
+  if(u) return { ok:true, admin:u };
+  const activeAdminUsers = users.filter(function(x){
+    return x.active && (x.role==='Lead DSL' || x.role==='Senior Leadership');
+  });
+  if(activeAdminUsers.length===0 && adminCode){
+    try { PropertiesService.getScriptProperties().setProperty('ADMIN_CODE', normUpper(adminCode)); } catch(e) {}
+    return { ok:true, admin:{ id:'__bootstrap__', firstName:'System', lastName:'Admin', role:'Lead DSL' } };
+  }
   if(!u) return { ok:false, error:'Invalid admin code' };
   return { ok:true, admin:u };
 }
 
+function caseHeaders(){
+  return ['id','timestamp','reporter','studentId','studentName','year','category','subcategory','risk','status','description','location','assignee','agencies','bodyMap','timeline','actions'];
+}
+
+function ensureCasesSheet(){
+  return getOrCreateSheet(SHEET_CASES, caseHeaders());
+}
+
+function parseJsonCell(value, fallback){
+  if(value===undefined || value===null || value==='') return fallback;
+  if(typeof value === 'object') return value;
+  try { return JSON.parse(value); } catch(e) { return fallback; }
+}
+
 function getCases(){
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sh = ss.getSheetByName(SHEET_CASES) || ss.getSheets()[0];
+  const sh = ensureCasesSheet();
   const rows = sh.getDataRange().getValues();
+  const headers = rows[0] || [];
+  const hasJson = headers.indexOf('payloadJson') >= 0 || headers.indexOf('actions') >= 0;
   const cases = [];
   for(let i=1;i<rows.length;i++){
-    if(String(rows[i].join('')).trim()==='') continue;
+    const row = rows[i];
+    if(String(row.join('')).trim()==='') continue;
+    if(hasJson){
+      const c = {
+        id: row[0] || ('c_' + i),
+        date: row[1] || '',
+        reporter: row[2] || '',
+        studentId: row[3] || '',
+        studentName: row[4] || '',
+        year: row[5] || '',
+        category: row[6] || '',
+        subcategory: row[7] || '',
+        risk: row[8] || 'Medium',
+        status: row[9] || 'New',
+        description: row[10] || '',
+        location: row[11] || '',
+        assignee: row[12] || '',
+        agencies: parseJsonCell(row[13], []),
+        bodyMap: parseJsonCell(row[14], []),
+        timeline: parseJsonCell(row[15], []),
+        actions: parseJsonCell(row[16], [])
+      };
+      cases.push({
+        rowId:i+1,
+        timestamp:c.date,
+        reporterName:c.reporter,
+        studentName:c.studentName,
+        grade:c.year,
+        category:c.category,
+        severity:c.risk,
+        description:c.description,
+        status:c.status,
+        assignee:c.assignee,
+        agencies:Array.isArray(c.agencies) ? c.agencies.join(',') : String(c.agencies||''),
+        bodyMap:c.bodyMap,
+        timeline:c.timeline,
+        actions:c.actions,
+        payload:c
+      });
+      continue;
+    }
     cases.push({
       rowId:i+1,
-      timestamp:rows[i][0],
-      reporterName:rows[i][1],
-      studentName:rows[i][5],
-      grade:rows[i][6],
-      category:rows[i][11],
-      severity:rows[i][12]||'',
-      description:rows[i][12],
-      status:rows[i][20]||'New',
-      assignee:rows[i][21]||'',
-      agencies:rows[i][22]||''
+      timestamp:row[0],
+      reporterName:row[1],
+      studentName:row[5],
+      grade:row[6],
+      category:row[11],
+      severity:row[12]||'',
+      description:row[12],
+      status:row[20]||'New',
+      assignee:row[21]||'',
+      agencies:row[22]||''
     });
   }
   return { ok:true, status:'success', data:cases };
+}
+
+function normalizeCasePayload(p){
+  return {
+    id: p.id || ('c_' + Utilities.getUuid().replace(/-/g,'').slice(0,12)),
+    date: p.date || nowIso(),
+    reporter: p.reporter || '',
+    studentId: p.studentId || '',
+    studentName: p.studentName || '',
+    year: p.year || '',
+    category: p.category || '',
+    subcategory: p.subcategory || '',
+    risk: p.risk || 'Medium',
+    status: p.status || 'New',
+    description: p.description || '',
+    location: p.location || '',
+    assignee: p.assignee || '',
+    agencies: Array.isArray(p.agencies) ? p.agencies : String(p.agencies || '').split(',').filter(Boolean),
+    bodyMap: Array.isArray(p.bodyMap) ? p.bodyMap : [],
+    timeline: Array.isArray(p.timeline) ? p.timeline : [],
+    actions: Array.isArray(p.actions) ? p.actions : []
+  };
+}
+
+function upsertCaseRecord(payload){
+  const sh = ensureCasesSheet();
+  const cases = getCases().data || [];
+  const c = normalizeCasePayload(payload);
+  const idx = cases.findIndex(function(x){ return x.id === c.id; });
+  const row = [c.id,c.date,c.reporter,c.studentId,c.studentName,c.year,c.category,c.subcategory,c.risk,c.status,c.description,c.location,c.assignee,JSON.stringify(c.agencies),JSON.stringify(c.bodyMap),JSON.stringify(c.timeline),JSON.stringify(c.actions)];
+  if(idx >= 0){
+    sh.getRange(idx + 2, 1, 1, row.length).setValues([row]);
+    return { ok:true, rowId: idx + 2, case:c };
+  }
+  sh.appendRow(row);
+  return { ok:true, rowId: sh.getLastRow(), case:c };
 }
 
 function loginByCode(code){
@@ -288,30 +387,28 @@ function doGet(e){
 }
 
 function doPost(e){
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sh = ss.getSheetByName(SHEET_CASES);
-  if(!sh){
-    sh = ss.insertSheet(SHEET_CASES);
-    const header = [];
-    for(let i=1;i<=23;i++) header.push('col'+i);
-    sh.getRange(1,1,1,23).setValues([header]);
-  }
   const p = JSON.parse(e.postData.contents || '{}');
-  if (p.action==='report' && p.payload){
-    const c = p.payload;
-    const row = new Array(23).fill('');
-    row[0] = c.date || nowIso();
-    row[1] = c.reporter || '';
-    row[5] = c.studentName || '';
-    row[6] = c.year || '';
-    row[11] = c.category || '';
-    row[12] = c.description || '';
-    row[20] = c.status || 'New';
-    row[21] = c.assignee || '';
-    row[22] = (c.agencies || []).join(',');
-    sh.appendRow(row);
+  if (p.action==='report' && p.payload) return jsonOut(upsertCaseRecord(p.payload));
+  if (p.action==='syncCase' && p.payload) return jsonOut(upsertCaseRecord(p.payload));
+  if (p.action==='updateStatus' && (p.rowId || p.caseId)){
+    const data = getCases().data || [];
+    const c = data.find(function(x){ return String(x.rowId)===String(p.rowId) || x.id===p.caseId; });
+    if(!c) return jsonOut({ ok:false, error:'Case not found' });
+    const payload = c.payload || normalizeCasePayload({
+      id:c.id, date:c.timestamp, reporter:c.reporterName, studentName:c.studentName, year:c.grade,
+      category:c.category, subcategory:'', risk:c.severity, status:p.status, description:c.description,
+      location:'', assignee:c.assignee, agencies:(c.agencies||'').split(',').filter(Boolean), bodyMap:c.bodyMap||[], timeline:c.timeline||[], actions:c.actions||[]
+    });
+    payload.status = p.status;
+    return jsonOut(upsertCaseRecord(payload));
   }
-  if (p.action==='updateStatus' && p.rowId) sh.getRange(Number(p.rowId),21).setValue(p.status);
-  if (p.action==='deleteCase' && p.rowId) sh.getRange(Number(p.rowId),1,1,sh.getLastColumn()).clearContent();
-  return jsonOut({ ok:true, status:'success' });
+  if (p.action==='deleteCase' && (p.rowId || p.caseId)){
+    const sh = ensureCasesSheet();
+    const data = getCases().data || [];
+    const idx = data.findIndex(function(x){ return String(x.rowId)===String(p.rowId) || x.id===p.caseId; });
+    if(idx<0) return jsonOut({ ok:false, error:'Case not found' });
+    sh.deleteRow(idx + 2);
+    return jsonOut({ ok:true, status:'success' });
+  }
+  return jsonOut({ ok:false, error:'Unknown action' });
 }
