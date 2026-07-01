@@ -58,9 +58,21 @@ function saveUsers(users){
   }catch(e){ return false; }
 }
 
-function genAccessCode(len=8){
-  const chars='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-  let out=''; for(let i=0;i<len;i++) out+=chars[Math.floor(Math.random()*chars.length)]; return out;
+function genAccessCode(len=14){
+  const upper='ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower='abcdefghijkmnopqrstuvwxyz';
+  const digits='23456789';
+  const symbols='!@#$%^&*_-+=';
+  const all=upper+lower+digits+symbols;
+  const size=Math.max(12, len||14);
+  const pick=(chars)=> chars[Math.floor(Math.random()*chars.length)];
+  const out=[pick(upper), pick(lower), pick(digits), pick(symbols)];
+  for(let i=out.length;i<size;i++) out.push(pick(all));
+  for(let i=out.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    const t=out[i]; out[i]=out[j]; out[j]=t;
+  }
+  return out.join('');
 }
 
 function hashCode(code){ return bcrypt.hashSync(code, 10); }

@@ -27,7 +27,7 @@ app.use(express.static(path.join(__dirname)));
 // ── Validation & Constants ───────────────────────────────────────────────────
 const VALID_ROLES = ['Teacher','Pastoral Lead','Deputy DSL','Lead DSL','Senior Leadership'];
 const CODE_MIN_LENGTH = 6;
-const CODE_MAX_LENGTH = 12;
+const CODE_MAX_LENGTH = 24;
 const NAME_MAX_LENGTH = 100;
 
 // ── Response helpers ─────────────────────────────────────────────────────────
@@ -44,12 +44,15 @@ function validateString(value, min = 1, max = NAME_MAX_LENGTH) {
 
 function validateCode(value) {
   if (typeof value !== 'string') return { valid: false, error: 'Access code must be a string' };
-  const trimmed = value.toUpperCase().trim();
+  const trimmed = value.trim();
   if (trimmed.length < CODE_MIN_LENGTH || trimmed.length > CODE_MAX_LENGTH) {
     return { valid: false, error: `Access code must be ${CODE_MIN_LENGTH}-${CODE_MAX_LENGTH} characters` };
   }
-  if (!/^[A-Z0-9]+$/.test(trimmed)) {
-    return { valid: false, error: 'Access code must contain only letters and numbers' };
+  if (/[\s]/.test(trimmed)) {
+    return { valid: false, error: 'Access code cannot contain spaces' };
+  }
+  if (!/^[\x21-\x7E]+$/.test(trimmed)) {
+    return { valid: false, error: 'Access code contains invalid characters' };
   }
   return { valid: true, value: trimmed };
 }
@@ -77,7 +80,7 @@ function requireAdmin(req, res, next) {
     });
   }
 
-  const code = authHeader.slice(7).trim().toUpperCase();
+  const code = authHeader.slice(7).trim();
 
   if (!code) {
     return res.status(401).json({
@@ -87,7 +90,7 @@ function requireAdmin(req, res, next) {
   }
 
   // Master admin from environment
-  if (ADMIN_CODE && code === ADMIN_CODE) {
+  if (ADMIN_CODE && (code === ADMIN_CODE || code.toUpperCase() === ADMIN_CODE)) {
     req.adminUser = { id: '__admin__', firstName: 'System', lastName: 'Admin', role: 'Lead DSL' };
     return next();
   }
@@ -135,7 +138,7 @@ app.post('/api/login', (req, res) => {
   const normalizedCode = validation.value;
 
   // Check master admin code first
-  if (ADMIN_CODE && normalizedCode === ADMIN_CODE) {
+  if (ADMIN_CODE && (normalizedCode === ADMIN_CODE || normalizedCode.toUpperCase() === ADMIN_CODE)) {
     return res.json({
       ok: true,
       user: {
@@ -181,115 +184,12 @@ app.post('/api/login', (req, res) => {
   });
 });
 
-// ── POST /api/verify-email ────────────────────────────────────────────────────
-// Allows teachers to request an access code via email
-app.post('/api/verify-email', async (req, res) => {
-  if (!req.body || typeof req.body !== 'object') {
-    return res.status(400).json({
-      ok: false,
-      error: 'Invalid request'
-    });
-  }
-
-  const { email } = req.body;
-
-  // Validate email
-  if (!email || typeof email !== 'string' || !/@/.test(email.trim())) {
-    return res.status(400).json({
-      ok: false,
-      error: 'Please provide a valid email address'
-    });
-  }
-
-  const normalizedEmail = email.trim().toLowerCase();
-
-  try {
-    // Generate a new code
-    const code = ds.genAccessCode();
-    const codeHash = ds.hashCode(code);
-
-    // Load users and find or create the user
-    const users = ds.loadUsers();
-    let user = users.find(u => u.email && u.email.toLowerCase() === normalizedEmail);
-
-    if (user) {
-      // Update existing user with new code
-      user.codeHash = codeHash;
-      user.role = 'Teacher'; // Reset to Teacher if previously different
-      user.active = true;
-      user.updatedAt = new Date().toISOString();
-    } else {
-      // Create new user
-      user = {
-        id: 'u_' + crypto.randomBytes(8).toString('hex'),
-        firstName: normalizedEmail.split('@')[0],
-        lastName: '',
-        role: 'Teacher',
-        email: normalizedEmail,
-        codeHash: codeHash,
-        active: true,
-        createdAt: new Date().toISOString(),
-        lastLogin: null
-      };
-      users.push(user);
-    }
-
-    // Save users to file
-    ds.saveUsers(users);
-
-    // Try to send email
-    try {
-      const nodemailer = require('nodemailer');
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: parseInt(process.env.SMTP_PORT || '587', 10),
-        secure: process.env.SMTP_SECURE === 'true',
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS
-        }
-      });
-
-      await transporter.sendMail({
-        from: process.env.SMTP_USER,
-        to: normalizedEmail,
-        subject: 'Your I CAN School Safeguarding Access Code',
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #0d7a6f;">Your Access Code</h2>
-            <p>Hello,</p>
-            <p>Your access code for the I CAN School Safeguarding Platform is:</p>
-            <div style="background: #f4f7f6; padding: 20px; border-radius: 12px; text-align: center; margin: 20px 0;">
-              <h1 style="color: #0d7a6f; font-family: monospace; letter-spacing: 3px; margin: 0;">${code}</h1>
-            </div>
-            <p><strong>Keep this code safe.</strong> Do not share it with anyone.</p>
-            <p>This code will work for 24 hours. If you didn't request this, please ignore this email.</p>
-            <hr style="border: none; border-top: 1px solid #e3eae8; margin: 30px 0;">
-            <p style="font-size: 12px; color: #666;">I CAN School · Safeguarding Platform</p>
-          </div>
-        `,
-        text: `Your access code: ${code}\n\nKeep this safe and do not share.`
-      });
-
-      console.log(`[email] Code sent to ${normalizedEmail}`);
-    } catch (emailError) {
-      console.error('[email] Failed to send:', emailError.message);
-      // Still return success to avoid exposing email configuration issues
-    }
-
-    // Always return success for privacy and security
-    return res.json({
-      ok: true,
-      message: 'If this email is registered, you will receive an access code within a few minutes'
-    });
-
-  } catch (error) {
-    console.error('[verify-email] Error:', error);
-    return res.status(500).json({
-      ok: false,
-      error: 'An error occurred. Please try again later.'
-    });
-  }
+// Email-based code issuance is intentionally disabled.
+app.post('/api/verify-email', (_req, res) => {
+  return res.status(410).json({
+    ok: false,
+    error: 'Email access code request has been disabled. Contact the DSL team for a secure code.'
+  });
 });
 
 // ── GET /api/admin/users ──────────────────────────────────────────────────────

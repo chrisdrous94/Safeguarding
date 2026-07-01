@@ -2,9 +2,10 @@ const { loadUsers, compareCode } = require('../data-store');
 
 function validateCode(value){
   if(typeof value !== 'string') return { valid:false, error:'Access code must be a string' };
-  const trimmed = value.toUpperCase().trim();
-  if(trimmed.length < 6 || trimmed.length > 12) return { valid:false, error:'Access code must be 6-12 characters' };
-  if(!/^[A-Z0-9]+$/.test(trimmed)) return { valid:false, error:'Access code must contain only letters and numbers' };
+  const trimmed = value.trim();
+  if(trimmed.length < 6 || trimmed.length > 24) return { valid:false, error:'Access code must be 6-24 characters' };
+  if(/[\s]/.test(trimmed)) return { valid:false, error:'Access code cannot contain spaces' };
+  if(!/^[\x21-\x7E]+$/.test(trimmed)) return { valid:false, error:'Access code contains invalid characters' };
   return { valid:true, value:trimmed };
 }
 
@@ -17,7 +18,7 @@ module.exports = (req, res) => {
   const normalized = v.value;
 
   const ADMIN_CODE = (process.env.ADMIN_CODE||'').toUpperCase().trim();
-  if(ADMIN_CODE && normalized === ADMIN_CODE){
+  if(ADMIN_CODE && (normalized === ADMIN_CODE || normalized.toUpperCase() === ADMIN_CODE)){
     return res.json({ ok:true, user:{ id:'__admin__', firstName:'System', lastName:'Admin', role:'Lead DSL' } });
   }
 

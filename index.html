@@ -76,12 +76,9 @@ tailwind.config = {
     </div>
 
     <!-- Mode Tabs -->
-    <div class="flex gap-2 mb-6">
-      <button id="modeCodeBtn" onclick="authSetMode('code')" class="flex-1 h-12 rounded-2xl font-bold text-sm transition-all border-2 border-brand bg-brand text-white" aria-selected="true">
+    <div class="mb-6">
+      <button id="modeCodeBtn" class="w-full h-12 rounded-2xl font-bold text-sm transition-all border-2 border-brand bg-brand text-white" aria-selected="true" disabled>
         <i data-lucide="key-round" class="w-4 h-4 inline mr-2"></i>Access code
-      </button>
-      <button id="modeEmailBtn" onclick="authSetMode('email')" class="flex-1 h-12 rounded-2xl font-bold text-sm transition-all border-2 border-line bg-card text-slate-600 hover:border-brand" aria-selected="false">
-        <i data-lucide="mail" class="w-4 h-4 inline mr-2"></i>Email request
       </button>
     </div>
 
@@ -96,17 +93,17 @@ tailwind.config = {
         <input
           id="loginCode"
           type="text"
-          placeholder="e.g. ABCD1234"
+          placeholder="Enter your secure code"
           autocomplete="off"
           spellcheck="false"
-          maxlength="12"
-          inputmode="latin-uppercase"
+          maxlength="24"
+          inputmode="text"
           aria-label="Access code"
-          class="w-full h-14 px-4 rounded-2xl bg-dim border border-transparent text-center text-xl font-extrabold tracking-[.25em] uppercase text-ink transition-all"
-          oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,''); authShowCharCount()"
+          class="w-full h-14 px-4 rounded-2xl bg-dim border border-transparent text-center text-xl font-extrabold tracking-[.12em] text-ink transition-all"
+          oninput="this.value=this.value.replace(/\s/g,''); authShowCharCount()"
           onkeydown="if(event.key==='Enter' && !$('loginBtn').disabled) doCodeLogin()">
         <p class="text-[11px] text-slate-400 font-medium mt-2">
-          <span id="charCount">0</span>/12 characters · Letters and numbers only
+          <span id="charCount">0</span>/24 characters · Use upper/lowercase letters, numbers and symbols
         </p>
       </div>
 
@@ -124,44 +121,6 @@ tailwind.config = {
       </p>
     </div>
 
-    <!-- Email Mode -->
-    <div id="authModeEmail" class="hidden bg-card rounded-4xl border border-line shadow-lift p-7 space-y-4">
-      <!-- Error/Success Message -->
-      <div id="authEmailMessage" class="hidden p-3 rounded-2xl text-sm font-medium animate-in" role="alert" aria-live="polite"></div>
-
-      <!-- Info -->
-      <div class="bg-brandSoft rounded-2xl border border-brand/20 p-4 flex gap-3">
-        <i data-lucide="info" class="w-5 h-5 text-brand shrink-0 mt-0.5"></i>
-        <div class="text-sm text-onBrandSoft font-medium">
-          Enter your email and we'll send you an access code via email. Check your inbox and spam folder.
-        </div>
-      </div>
-
-      <!-- Email Input -->
-      <div>
-        <label for="loginEmail" class="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-3">School email</label>
-        <input
-          id="loginEmail"
-          type="email"
-          placeholder="your.name@school.co.uk"
-          autocomplete="email"
-          aria-label="School email"
-          class="w-full h-12 px-4 rounded-2xl bg-dim border border-transparent text-sm font-medium transition-all">
-      </div>
-
-      <!-- Submit Button -->
-      <button
-        id="emailBtn"
-        onclick="doEmailRequest()"
-        class="w-full h-12 rounded-full bg-brand hover:bg-brandDark disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-sm shadow-soft flex items-center justify-center gap-2 transition-all">
-        <i data-lucide="send" class="w-4 h-4"></i>Send access code
-      </button>
-
-      <!-- Help Text -->
-      <p class="text-center text-[11px] text-slate-400 font-medium pt-2">
-        Email not working? Contact your IT team or DSL
-      </p>
-    </div>
   </div>
 </div>
 
@@ -769,9 +728,8 @@ const AGENCIES = {
   Police:    { label:'Police / Prevent', icon:'shield', color:'police' },
   Social:    { label:'Children\u2019s Social Care', icon:'users', color:'social' },
   Health:    { label:'Health / GP', icon:'heart-pulse', color:'health' },
-  CAMHS:     { label:'CAMHS', icon:'brain', color:'camhs' },
-  EarlyHelp: { label:'Early Help', icon:'life-buoy', color:'earlyhelp' },
-  LADO:      { label:'LADO', icon:'gavel', color:'social' }
+  HOPE:       { label:'Hope for Children', icon:'heart-handshake', color:'earlyhelp' },
+  External:  { label:'External Associates', icon:'briefcase', color:'social' }
 };
 
 const STRATEGIES = {
@@ -1633,15 +1591,30 @@ function normUpper(s){ return norm(s).toUpperCase(); }
 function normLower(s){ return norm(s).toLowerCase(); }
 
 function hashCode(code){
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, norm(code));
+  return bytes.map(function(b){ const v=(b<0?b+256:b).toString(16); return v.length===1?'0'+v:v; }).join('');
+}
+
+function hashCodeLegacy(code){
   const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, normUpper(code));
   return bytes.map(function(b){ const v=(b<0?b+256:b).toString(16); return v.length===1?'0'+v:v; }).join('');
 }
 
 function genCode(len){
-  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let out='';
-  for(let i=0;i<(len||8);i++) out += chars.charAt(Math.floor(Math.random()*chars.length));
-  return out;
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower = 'abcdefghijkmnopqrstuvwxyz';
+  const digits = '23456789';
+  const symbols = '!@#$%^&*_-+=';
+  const all = upper + lower + digits + symbols;
+  const size = Math.max(12, len || 14);
+  const pick = function(chars){ return chars.charAt(Math.floor(Math.random()*chars.length)); };
+  const out = [pick(upper), pick(lower), pick(digits), pick(symbols)];
+  for(let i=out.length;i<size;i++) out.push(pick(all));
+  for(let i=out.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    const t = out[i]; out[i]=out[j]; out[j]=t;
+  }
+  return out.join('');
 }
 
 function getOrCreateSheet(name, headers){
@@ -1725,8 +1698,9 @@ function requireAdmin(adminCode){
   if(isAdminCode(adminCode)) return { ok:true, admin:{ id:'__admin__', firstName:'System', lastName:'Admin', role:'Lead DSL' } };
   const users = loadUsers();
   const codeHash = hashCode(adminCode);
+  const codeHashLegacy = hashCodeLegacy(adminCode);
   const u = users.find(function(x){
-    return x.active && x.codeHash === codeHash && (x.role==='Lead DSL' || x.role==='Senior Leadership');
+    return x.active && (x.codeHash === codeHash || x.codeHash === codeHashLegacy) && (x.role==='Lead DSL' || x.role==='Senior Leadership');
   });
   if(!u) return { ok:false, error:'Invalid admin code' };
   return { ok:true, admin:u };
@@ -1757,63 +1731,22 @@ function getCases(){
 }
 
 function loginByCode(code){
-  const c = normUpper(code);
+  const c = norm(code);
   if(!c) return { ok:false, error:'Access code is required' };
   if(isAdminCode(c)){
     return { ok:true, user:{ id:'__admin__', firstName:'System', lastName:'Admin', role:'Lead DSL' } };
   }
   const users = loadUsers();
   const codeHash = hashCode(c);
-  const idx = users.findIndex(function(u){ return u.codeHash===codeHash; });
+  const codeHashLegacy = hashCodeLegacy(c);
+  const idx = users.findIndex(function(u){ return u.codeHash===codeHash || u.codeHash===codeHashLegacy; });
   if(idx<0) return { ok:false, error:'Access code not recognized' };
   if(!users[idx].active) return { ok:false, error:'This access code has been deactivated.' };
+  if(users[idx].codeHash===codeHashLegacy) users[idx].codeHash = codeHash;
   users[idx].lastLogin = nowIso();
   users[idx].updatedAt = nowIso();
   saveUsers(users);
   return { ok:true, user:publicUser(users[idx]) };
-}
-
-function verifyEmail(email){
-  const e = normLower(email);
-  if(!e || e.indexOf('@')===-1) return { ok:false, error:'Invalid email' };
-
-  const users = loadUsers();
-  let u = users.find(function(x){ return normLower(x.email)===e; });
-  const code = genCode(8);
-  const codeHash = hashCode(code);
-
-  if(!u){
-    u = {
-      id: 'u_' + Utilities.getUuid().replace(/-/g,'').slice(0,12),
-      firstName: e.split('@')[0],
-      lastName: '',
-      role: 'Teacher',
-      email: e,
-      codeHash: codeHash,
-      active: true,
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-      lastLogin: ''
-    };
-    users.push(u);
-  } else {
-    u.codeHash = codeHash;
-    u.active = true;
-    u.updatedAt = nowIso();
-  }
-  saveUsers(users);
-
-  try {
-    MailApp.sendEmail({
-      to: e,
-      subject: 'Your Safeguarding Access Code',
-      body: 'Your access code is: ' + code + '\n\nUse this code to sign in.'
-    });
-  } catch(err) {
-    // Keep response generic for privacy/security
-  }
-
-  return { ok:true, message:'If the email is registered, an access code will be sent shortly.' };
 }
 
 function listUsers(adminCode){
@@ -1836,7 +1769,7 @@ function saveUserAction(adminCode, id, firstName, lastName, role){
     return { ok:true, user:publicUser(u) };
   }
 
-  const code = genCode(8);
+  const code = genCode(14);
   u = {
     id: 'u_' + Utilities.getUuid().replace(/-/g,'').slice(0,12),
     firstName: fn,
@@ -1862,7 +1795,7 @@ function regenUserCode(adminCode, id){
   const users = loadUsers();
   const u = users.find(function(x){ return x.id===id; });
   if(!u) return { ok:false, error:'User not found' };
-  const code = genCode(8);
+  const code = genCode(14);
   u.codeHash = hashCode(code);
   u.updatedAt = nowIso();
   saveUsers(users);
@@ -1895,7 +1828,6 @@ function doGet(e){
     const action = norm(e && e.parameter && e.parameter.action) || 'getCases';
     if(action==='getCases') return jsonOut(getCases());
     if(action==='login') return jsonOut(loginByCode(e.parameter.code));
-    if(action==='verifyEmail') return jsonOut(verifyEmail(e.parameter.email));
     if(action==='listUsers') return jsonOut(listUsers(e.parameter.adminCode));
     if(action==='saveUser') return jsonOut(saveUserAction(e.parameter.adminCode, e.parameter.id, e.parameter.firstName, e.parameter.lastName, e.parameter.role));
     if(action==='regenUserCode') return jsonOut(regenUserCode(e.parameter.adminCode, e.parameter.id));
@@ -1963,35 +1895,14 @@ async function scriptGet(action, params={}){
 // ---------- AUTH MODE MANAGEMENT ----------
 let authCurrentMode = 'code';
 function authSetMode(mode){
-  authCurrentMode = mode;
-  const codeMode=$('authModeCode'), emailMode=$('authModeEmail');
-  const codeBtn=$('modeCodeBtn'), emailBtn=$('modeEmailBtn');
-  
-  if(mode==='code'){
-    codeMode.classList.remove('hidden');
-    emailMode.classList.add('hidden');
-    codeBtn.classList.add('bg-brand','text-white','border-brand');
-    codeBtn.classList.remove('bg-card','text-slate-600','border-line');
-    emailBtn.classList.add('bg-card','text-slate-600','border-line');
-    emailBtn.classList.remove('bg-brand','text-white','border-brand');
-    codeBtn.setAttribute('aria-selected','true');
-    emailBtn.setAttribute('aria-selected','false');
-    $('loginCode')?.focus();
-  } else {
-    codeMode.classList.add('hidden');
-    emailMode.classList.remove('hidden');
-    codeBtn.classList.add('bg-card','text-slate-600','border-line');
-    codeBtn.classList.remove('bg-brand','text-white','border-brand');
-    emailBtn.classList.add('bg-brand','text-white','border-brand');
-    emailBtn.classList.remove('bg-card','text-slate-600','border-line');
-    codeBtn.setAttribute('aria-selected','false');
-    emailBtn.setAttribute('aria-selected','true');
-    $('loginEmail')?.focus();
-  }
+  authCurrentMode = 'code';
+  const codeMode=$('authModeCode');
+  if(codeMode) codeMode.classList.remove('hidden');
+  $('loginCode')?.focus();
 }
 
 function authShowMessage(mode, message, type='info'){
-  const msgEl = mode==='code' ? $('authCodeMessage') : $('authEmailMessage');
+  const msgEl = $('authCodeMessage');
   if(!msgEl) return;
   
   const bgColor = {
@@ -2027,7 +1938,7 @@ function authShowCharCount(){
 
 // ---------- LOGIN: CODE MODE ----------
 async function doCodeLogin(){
-  const code = ($('loginCode')?.value || '').trim().toUpperCase();
+  const code = ($('loginCode')?.value || '').trim();
   
   // Validation
   if(!code){
@@ -2038,6 +1949,11 @@ async function doCodeLogin(){
   
   if(code.length < 6){
     authShowMessage('code', 'Access code must be at least 6 characters', 'warning');
+    return;
+  }
+
+  if(/\s/.test(code)){
+    authShowMessage('code', 'Access code cannot contain spaces', 'warning');
     return;
   }
   
@@ -2109,81 +2025,6 @@ async function doCodeLogin(){
   }
 }
 
-// ---------- LOGIN: EMAIL MODE ----------
-async function doEmailRequest(){
-  const email = ($('loginEmail')?.value || '').trim().toLowerCase();
-  
-  // Validation
-  if(!email){
-    authShowMessage('email', 'Please enter your school email', 'warning');
-    $('loginEmail')?.focus();
-    return;
-  }
-  
-  if(!/@/.test(email)){
-    authShowMessage('email', 'Please enter a valid email address', 'warning');
-    return;
-  }
-  
-  // Disable button and show loading
-  const btn = $('emailBtn');
-  const origHTML = btn?.innerHTML || '';
-  if(btn){
-    btn.disabled = true;
-    btn.innerHTML = '<i data-lucide="loader-circle" class="w-4 h-4 animate-spin"></i>Sending…';
-    icons();
-  }
-  
-  try {
-    let payload;
-    if(USE_NODE_API()){
-      const response = await fetch(apiUrl('/api/verify-email'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
-      });
-      const contentType = response.headers.get('content-type') || '';
-      const isJson = contentType.includes('application/json');
-      payload = isJson ? await response.json() : await response.text();
-      if(!response.ok){
-        const msg = isJson && payload && payload.error
-          ? payload.error
-          : 'Email service is not available right now. Restart the server and try again.';
-        authShowMessage('email', msg, 'error');
-        return;
-      }
-    } else if(CAN_USE_APPS_SCRIPT()){
-      payload = await scriptGet('verifyEmail', { email });
-      if(!payload || !payload.ok){
-        authShowMessage('email', (payload && payload.error) || 'Email service unavailable.', 'error');
-        return;
-      }
-    } else {
-      authShowMessage('email', 'Configure either API Base URL or Apps Script URL in Settings.', 'error');
-      return;
-    }
-    
-    // Always show success message for privacy
-    authShowMessage('email', 'Check your email inbox (and spam folder) for your access code. It may take a minute to arrive.', 'success');
-    
-    // Clear the input after success
-    setTimeout(() => {
-      const emailInput = $('loginEmail');
-      if(emailInput) emailInput.value = '';
-      authShowMessage('email', '', 'info');
-    }, 4000);
-    
-  } catch(error){
-    console.error('Email request error:', error);
-    authShowMessage('email', 'Could not reach the authentication service. Check API Base URL or Apps Script URL in Settings.', 'error');
-  } finally {
-    if(btn){
-      btn.disabled = false;
-      btn.innerHTML = origHTML;
-      icons();
-    }
-  }
-}
 const authHeader = ()=> ({ 'Content-Type':'application/json', 'Authorization':`Bearer ${ME.code}` });
 
 function persistSession(){
@@ -2244,14 +2085,11 @@ function signOut(){
   // Clear auth inputs
   const loginCode = $('loginCode');
   if(loginCode) loginCode.value = '';
-  const loginEmail = $('loginEmail');
-  if(loginEmail) loginEmail.value = '';
+  authShowCharCount();
   
   // Clear any messages
   const codeMsg = $('authCodeMessage');
   if(codeMsg) codeMsg.classList.add('hidden');
-  const emailMsg = $('authEmailMessage');
-  if(emailMsg) emailMsg.classList.add('hidden');
   
   // Show auth overlay
   const overlay = $('authOverlay');
@@ -2372,7 +2210,22 @@ async function renderUsers(){
 // ---------- Local users fallback (when server not available) ----------
 function getLocalUsers(){ try{ return JSON.parse(LS.get('ics_users')||'[]'); }catch(e){ return []; } }
 function saveLocalUsers(u){ try{ LS.set('ics_users', JSON.stringify(u||[])); }catch(e){} }
-function genAccessCode(len=8){ const chars='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'; let out=''; for(let i=0;i<len;i++) out+=chars[Math.floor(Math.random()*chars.length)]; return out; }
+function genAccessCode(len=14){
+  const upper='ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower='abcdefghijkmnopqrstuvwxyz';
+  const digits='23456789';
+  const symbols='!@#$%^&*_-+=';
+  const all=upper+lower+digits+symbols;
+  const size=Math.max(12, len||14);
+  const pick=(chars)=> chars[Math.floor(Math.random()*chars.length)];
+  const out=[pick(upper), pick(lower), pick(digits), pick(symbols)];
+  for(let i=out.length;i<size;i++) out.push(pick(all));
+  for(let i=out.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    const t=out[i]; out[i]=out[j]; out[j]=t;
+  }
+  return out.join('');
+}
 
 function openCreateUser(){
   $('userModalTitle').textContent='Create user';
