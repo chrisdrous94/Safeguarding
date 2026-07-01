@@ -766,7 +766,7 @@ const STATUS = {
   'Resolved':    { color:'ok' }
 };
 
-const TEAM = ['Dana Stavrou','Marcus Bell','Priya Anand','Tom Reilly','Sofia Costa'];
+const TEAM = [];
 
 // ---------- App state ----------
 let DB = { students:[], cases:[], audit:[] };
@@ -780,6 +780,7 @@ let activeCaseId = null;
 let activeStudentId = null;
 let charts = {};
 let reportBodyMap = [];
+let APP_USERS = [];
 
 // ---------- tiny helpers ----------
 const $ = id => document.getElementById(id);
@@ -1237,7 +1238,8 @@ function renderAudit(){
 function openModal(id){ const m=$(id); m.classList.remove('hidden'); requestAnimationFrame(()=>m.classList.remove('opacity-0')); }
 function closeModal(id){ const m=$(id); m.classList.add('opacity-0'); setTimeout(()=>m.classList.add('hidden'),200); }
 function populateSelects(){
-  const opts=TEAM.map(t=>`<option>${t}</option>`).join('');
+  const assignees=[...new Set((APP_USERS.length ? APP_USERS : TEAM).filter(Boolean))];
+  const opts=assignees.map(t=>`<option>${esc(t)}</option>`).join('');
   ['caseAssignee','newActionOwner'].forEach(id=>{ if($(id)) $(id).innerHTML = (id==='caseAssignee'?'<option value="">Unassigned</option>':'')+opts; });
   $('studentList').innerHTML = DB.students.map(s=>`<option value="${esc(s.name)}">${esc(s.year)} · ${esc(s.form)}</option>`).join('');
   const catFilter=$('conCategory');
@@ -1294,7 +1296,7 @@ function submitConcern(){
     timeline:[{time:now,author:$('rReporter').value.trim()||ME.name,type:'log',text:'Concern logged.'}] };
   DB.cases.unshift(c);
   logAudit('Concern logged', `${cat} · ${s.name}`, c.reporter);
-  if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'report',payload:c});
+  if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
   persist(); closeModal('reportModal'); renderAll();
   toast('Concern submitted to the DSL team');
   go('concerns');
@@ -1325,7 +1327,8 @@ function openCase(id){
     $('caseBodyMap').insertAdjacentHTML('afterend', `<div class="mt-2 space-y-1">${c.bodyMap.map((m,i)=>`<div class="text-[11px] text-slate-500 font-medium"><strong class="text-crit">${i+1}.</strong> ${esc(m.note||'Marked')}</div>`).join('')}</div>`);
   } else $('caseBodyMapWrap').classList.add('hidden');
   $('caseStatus').value=c.status;
-  $('caseAssignee').innerHTML='<option value="">Unassigned</option>'+TEAM.map(t=>`<option ${t===c.assignee?'selected':''}>${t}</option>`).join('');
+  const assignees=[...new Set((APP_USERS.length ? APP_USERS : TEAM).filter(Boolean))];
+  $('caseAssignee').innerHTML='<option value="">Unassigned</option>'+assignees.map(t=>`<option ${t===c.assignee?'selected':''}>${esc(t)}</option>`).join('');
   // agencies
   $('caseAgencies').innerHTML = Object.entries(AGENCIES).map(([key,a])=>{ const on=(c.agencies||[]).includes(key);
     return `<button onclick="toggleAgency('${key}')" class="w-full flex items-center justify-between px-3 h-11 rounded-xl border-2 ${on?`border-${a.color} bg-${a.color}Soft`:'border-line bg-card'} transition-colors">
@@ -1358,30 +1361,31 @@ function renderCaseTimeline(c){
 }
 function changeStatus(){ const c=DB.cases.find(x=>x.id===activeCaseId); const v=$('caseStatus').value;
   c.status=v; c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'status',text:`Status changed to ${v}.`});
-  logAudit('Status updated', `${c.studentName} → ${v}`); if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'updateStatus',rowId:c.rowId,status:v});
+  logAudit('Status updated', `${c.studentName} → ${v}`); if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
   persist(); renderCaseTimeline(c); renderAll(); toast('Status updated'); }
 function changeAssignee(){ const c=DB.cases.find(x=>x.id===activeCaseId); const v=$('caseAssignee').value;
   c.assignee=v; c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'note',text:v?`Assigned to ${v}.`:'Unassigned.'});
-  logAudit('Case reassigned', `${c.studentName} → ${v||'Unassigned'}`); persist(); renderCaseTimeline(c); renderAll(); toast('Assignee updated'); }
+  logAudit('Case reassigned', `${c.studentName} → ${v||'Unassigned'}`); if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c}); persist(); renderCaseTimeline(c); renderAll(); toast('Assignee updated'); }
 function toggleAgency(key){ const c=DB.cases.find(x=>x.id===activeCaseId); c.agencies=c.agencies||[];
   const i=c.agencies.indexOf(key);
-  if(i>-1){ c.agencies.splice(i,1); } else { c.agencies.push(key); c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'agency',text:`Referred to ${AGENCIES[key].label}.`}); logAudit('Agency referral',`${c.studentName} · ${AGENCIES[key].label}`); }
-  persist(); openCase(activeCaseId); renderAll(); }
+  if(i>-1){ c.agencies.splice(i,1); c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'agency',text:`Removed referral: ${AGENCIES[key].label}.`}); logAudit('Agency referral removed',`${c.studentName} · ${AGENCIES[key].label}`); }
+  else { c.agencies.push(key); c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'agency',text:`Referred to ${AGENCIES[key].label}.`}); logAudit('Agency referral',`${c.studentName} · ${AGENCIES[key].label}`); }
+  if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c}); persist(); openCase(activeCaseId); renderAll(); }
 function addCaseNote(){ const t=$('caseNote').value.trim(); if(!t) return; const c=DB.cases.find(x=>x.id===activeCaseId);
   c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'note',text:t}); $('caseNote').value='';
-  logAudit('Note added',c.studentName); persist(); renderCaseTimeline(c); toast('Note added'); }
+  logAudit('Note added',c.studentName); if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c}); persist(); renderCaseTimeline(c); renderAll(); toast('Note added'); }
 function addActionPrompt(){ $('newActionText').value=''; $('newActionDue').value=''; populateSelects(); $('newActionOwner').value=ME.name; openModal('actionModal'); }
 function saveAction(){ const t=$('newActionText').value.trim(); if(!t){ toast('Describe the action','warning'); return; }
   const c=DB.cases.find(x=>x.id===activeCaseId);
   c.actions=c.actions||[]; c.actions.push({id:uid('a_'),text:t,owner:$('newActionOwner').value,due:$('newActionDue').value?new Date($('newActionDue').value).toISOString():'',done:false});
   c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'action',text:`Action added: ${t}`});
-  logAudit('Action created',`${c.studentName} · ${t}`); persist(); closeModal('actionModal'); renderCaseActions(c); renderCaseTimeline(c); renderAll(); toast('Action added'); }
+  logAudit('Action created',`${c.studentName} · ${t}`); if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c}); persist(); closeModal('actionModal'); renderCaseActions(c); renderCaseTimeline(c); renderAll(); toast('Action added'); }
 function toggleAction(caseId,actId){ const c=DB.cases.find(x=>x.id===caseId); const a=c.actions.find(x=>x.id===actId); a.done=!a.done;
   if(a.done) c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'action',text:`Completed: ${a.text}`});
-  persist(); if(activeCaseId===caseId&&!$('caseModal').classList.contains('hidden')){ renderCaseActions(c); renderCaseTimeline(c); } renderAll(); renderTasks(); }
+  if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c}); persist(); if(activeCaseId===caseId&&!$('caseModal').classList.contains('hidden')){ renderCaseActions(c); renderCaseTimeline(c); } renderAll(); renderTasks(); }
 function deleteCase(){ const c=DB.cases.find(x=>x.id===activeCaseId); if(!confirm('Delete this concern? This cannot be undone.')) return;
   DB.cases=DB.cases.filter(x=>x.id!==activeCaseId); logAudit('Concern deleted',c.studentName);
-  if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'deleteCase',rowId:c.rowId}); persist(); closeModal('caseModal'); renderAll(); toast('Concern deleted'); }
+  if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'deleteCase',caseId:c.id,rowId:c.rowId}); persist(); closeModal('caseModal'); renderAll(); toast('Concern deleted'); }
 
 // ---------- STUDENT 360 ----------
 function openStudent(id){
@@ -2184,6 +2188,7 @@ async function renderUsers(){
     }
     if(!data.ok){ el.innerHTML=emptyState('alert-circle','Could not load users',data.error||''); return; }
     const users=data.users;
+    APP_USERS = users.map(u => `${u.firstName} ${u.lastName}`.trim()).filter(Boolean);
     if(!users.length){ el.innerHTML=emptyState('users','No users yet','Create the first user to give them access to the platform.'); return; }
     const roleColor={'Lead DSL':'crit','Senior Leadership':'crit','Deputy DSL':'high','Pastoral Lead':'med','Teacher':'low'};
     el.innerHTML=users.map(u=>{
