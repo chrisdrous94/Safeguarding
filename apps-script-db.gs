@@ -121,7 +121,7 @@ function requireAdmin(adminCode){
 }
 
 function caseHeaders(){
-  return ['id','timestamp','reporter','studentId','studentName','year','category','subcategory','risk','status','description','location','assignee','department','agencies','bodyMap','timeline','actions'];
+  return ['id','timestamp','reporter','studentId','studentName','year','category','subcategory','risk','status','description','location','assignee','department','strategies','agencies','bodyMap','timeline','actions'];
 }
 
 function ensureCasesSheet(){
@@ -135,13 +135,13 @@ function parseJsonCell(value, fallback){
 }
 
 function isModernCaseRow(row){
-  if(!row || row.length < 18) return false;
+  if(!row || row.length < 19) return false;
   const id = String(row[0] || '');
   const studentId = String(row[3] || '');
-  const jsonAgencies = parseJsonCell(row[14], null);
-  const jsonBodyMap = parseJsonCell(row[15], null);
-  const jsonTimeline = parseJsonCell(row[16], null);
-  const jsonActions = parseJsonCell(row[17], null);
+  const jsonAgencies = parseJsonCell(row[15], null);
+  const jsonBodyMap = parseJsonCell(row[16], null);
+  const jsonTimeline = parseJsonCell(row[17], null);
+  const jsonActions = parseJsonCell(row[18], null);
   const hasJsonColumns = Array.isArray(jsonAgencies) || Array.isArray(jsonBodyMap) || Array.isArray(jsonTimeline) || Array.isArray(jsonActions);
   return id.indexOf('c_')===0 || studentId.indexOf('s_')===0 || hasJsonColumns;
 }
@@ -173,10 +173,11 @@ function getCases(){
         location: row[11] || '',
         assignee: row[12] || '',
         department: row[13] || '',
-        agencies: parseJsonCell(row[14], []),
-        bodyMap: parseJsonCell(row[15], []),
-        timeline: parseJsonCell(row[16], []),
-        actions: parseJsonCell(row[17], [])
+        strategies: parseJsonCell(row[14], []),
+        agencies: parseJsonCell(row[15], []),
+        bodyMap: parseJsonCell(row[16], []),
+        timeline: parseJsonCell(row[17], []),
+        actions: parseJsonCell(row[18], [])
       };
       const out = {
         id:c.id,
@@ -193,6 +194,7 @@ function getCases(){
         status:c.status,
         assignee:c.assignee,
         department:c.department,
+        strategies:c.strategies,
         agencies:Array.isArray(c.agencies) ? c.agencies.join(',') : String(c.agencies||''),
         bodyMap:c.bodyMap,
         timeline:c.timeline,
@@ -242,6 +244,7 @@ function normalizeCasePayload(p){
     location: p.location || '',
     assignee: p.assignee || '',
     department: p.department || '',
+    strategies: Array.isArray(p.strategies) ? p.strategies : String(p.strategies || '').split(',').filter(Boolean),
     agencies: Array.isArray(p.agencies) ? p.agencies : String(p.agencies || '').split(',').filter(Boolean),
     bodyMap: Array.isArray(p.bodyMap) ? p.bodyMap : [],
     timeline: Array.isArray(p.timeline) ? p.timeline : [],
@@ -254,7 +257,7 @@ function upsertCaseRecord(payload){
   const cases = getCases().data || [];
   const c = normalizeCasePayload(payload);
   const idx = cases.findIndex(function(x){ return x.id === c.id; });
-  const row = [c.id,c.date,c.reporter,c.studentId,c.studentName,c.year,c.category,c.subcategory,c.risk,c.status,c.description,c.location,c.assignee,c.department,JSON.stringify(c.agencies),JSON.stringify(c.bodyMap),JSON.stringify(c.timeline),JSON.stringify(c.actions)];
+  const row = [c.id,c.date,c.reporter,c.studentId,c.studentName,c.year,c.category,c.subcategory,c.risk,c.status,c.description,c.location,c.assignee,c.department,JSON.stringify(c.strategies),JSON.stringify(c.agencies),JSON.stringify(c.bodyMap),JSON.stringify(c.timeline),JSON.stringify(c.actions)];
   if(idx >= 0){
     const targetRow = Number(cases[idx].rowId || (idx + 2));
     sh.getRange(targetRow, 1, 1, row.length).setValues([row]);

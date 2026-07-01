@@ -504,6 +504,10 @@ tailwind.config = {
         <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Reported by</label>
         <input id="rReporter" class="w-full h-12 px-4 rounded-2xl bg-card border border-line text-sm font-medium"></div>
       </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Teaching/Learning strategies implemented</label>
+        <div id="rStrategiesGrid" class="space-y-2"></div>
+      </div>
       <details class="bg-card rounded-2xl border border-line overflow-hidden group">
         <summary class="px-4 py-3.5 cursor-pointer flex items-center justify-between text-sm font-bold text-slate-700 hover:bg-dim">
           <span class="flex items-center gap-2"><i data-lucide="scan-face" class="w-4 h-4 text-brand"></i>Body map — record injury locations</span>
@@ -557,6 +561,9 @@ tailwind.config = {
           <select id="caseAssignee" onchange="changeAssignee()" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-bold"></select></div>
           <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Multi-agency referrals</h4>
             <div class="space-y-2" id="caseAgencies"></div>
+          </div>
+          <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Teaching/Learning strategies implemented</h4>
+            <div id="caseStrategies" class="space-y-1.5 text-[11px] text-slate-600"></div>
           </div>
           <div class="pt-2"><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Case details</h4>
             <div id="caseMeta" class="space-y-2 text-xs"></div>
@@ -765,6 +772,24 @@ const AGENCIES = {
   CAMHS:     { label:'CAMHS', icon:'brain', color:'camhs' },
   EarlyHelp: { label:'Early Help', icon:'life-buoy', color:'earlyhelp' },
   LADO:      { label:'LADO', icon:'gavel', color:'social' }
+};
+
+const STRATEGIES = {
+  'organised':     { label:'Well-organised classroom environment with clear routines and accessible materials' },
+  'distractions':  { label:'Minimising distractions within the classroom environment' },
+  'clarity':       { label:'Clear and calm start to lessons with expectations explicitly communicated (e.g., Ready, Responsible, Respectful)' },
+  'engaging':      { label:'Lessons designed to be engaging and interactive' },
+  'differentiate': { label:'Differentiation of tasks, resources, or expected outcomes to match the student\'s ability' },
+  'scaffold':      { label:'Scaffolding of learning (e.g., step-by-step instructions, writing frames, prompts, guided practice)' },
+  'seating':       { label:'Strategic seating plan used to support attention, behaviour, or learning' },
+  'presence':      { label:'Active teacher presence (circulating, monitoring work, and providing immediate feedback)' },
+  'positive':      { label:'Positive behaviour, effort, and progress recognised and reinforced' },
+  'simplify':      { label:'Instructions simplified, repeated, or broken into smaller steps' },
+  'visual':        { label:'Use of visual aids, modelling, or examples to support understanding' },
+  'time':          { label:'Additional time provided for processing information or completing tasks' },
+  'groupwork':     { label:'Pair or group support used to facilitate learning' },
+  'needs':         { label:'Consideration of SEN, EAL, and emotional wellbeing needs during lesson planning and delivery' },
+  'communicate':   { label:'Communication with the Headteacher and parents regarding concerns or progress' }
 };
 
 const RISK = {
@@ -1265,8 +1290,9 @@ function renderTasks(){
   icons();
 }
 function exportCSV(){
-  const rows=[['Student','Year','Category','Subcategory','Risk','Status','Assignee','Reporter','Department','Agencies','Logged','Description']];
-  filteredConcerns().forEach(c=> rows.push([c.studentName,c.year,c.category,c.subcategory,c.risk,c.status,c.assignee,c.reporter,c.department||'—',(c.agencies||[]).join(' '),fmtDate(c.date),(c.description||'').replace(/\s+/g,' ')]));
+  const rows=[['Student','Year','Category','Subcategory','Risk','Status','Assignee','Reporter','Department','Strategies implemented','Agencies','Logged','Description']];
+  filteredConcerns().forEach(c=> rows.push([c.studentName,c.year,c.category,c.subcategory,c.risk,c.status,c.assignee,c.reporter,c.department||'—',(c.strategies||[]).map(key=>STRATEGIES[key]?.label||key).join(' | '),
+    (c.agencies||[]).join(' | '),fmtDate(c.date),(c.description||'').replace(/\s+/g,' ')]));
   downloadCSV(rows, `safeguarding-concerns-${new Date().toISOString().slice(0,10)}.csv`);
   logAudit('Report exported','Concerns CSV'); persist(); toast('Export downloaded');
 }
@@ -1308,7 +1334,9 @@ function openReport(prefillName){
   $('rStudent').value=prefillName||''; $('rCategory').value=''; $('rDesc').value='';
   $('rLocation').value=''; $('rReporter').value=ME.name; $('rRisk').value='Medium';
   $('rDepartment').value='';
+  document.querySelectorAll('input[name="rStrategy"]').forEach(cb=> cb.checked=false);
   $('rSubWrap').classList.add('hidden');
+  renderStrategyCheckboxes();
   $('rCategoryGrid').innerHTML = Object.entries(CATEGORIES).map(([name,m])=>`
     <button type="button" data-cat="${esc(name)}" aria-pressed="false" onclick="pickCategory('${esc(name)}')" class="rcat flex items-center gap-2 px-3 h-12 rounded-2xl border-2 border-line bg-card text-left transition-colors hover:border-brand/40 hover:bg-dim/40">
       <i data-lucide="${m.icon}" class="w-4 h-4 text-${m.color} shrink-0"></i><span class="text-xs font-bold text-slate-700 leading-tight">${esc(name)}</span></button>`).join('');
@@ -1336,6 +1364,13 @@ function pickRisk(r){ $('rRisk').value=r;
   document.querySelectorAll('.rrisk').forEach(b=>{ const on=b.dataset.risk===r; const k=RISK[safeRisk(b.dataset.risk)];
     b.className=`rrisk h-12 rounded-2xl border-2 text-sm font-bold ${on?`border-${k.color} bg-${k.soft} text-${k.color}`:'border-line bg-card text-'+k.color}`; });
 }
+function renderStrategyCheckboxes(){
+  $('rStrategiesGrid').innerHTML = Object.entries(STRATEGIES).map(([key,s])=>`
+    <label class="flex items-start gap-3 p-3 rounded-xl hover:bg-dim cursor-pointer group">
+      <input type="checkbox" name="rStrategy" value="${key}" class="w-5 h-5 rounded border-2 border-line bg-card accent-brand mt-0.5">
+      <span class="text-xs font-medium text-slate-700 group-hover:text-ink flex-1">${esc(s.label)}</span>
+    </label>`).join('');
+}
 function submitConcern(){
   const name=$('rStudent').value.trim();
   const cat=$('rCategory').value;
@@ -1343,10 +1378,11 @@ function submitConcern(){
   if(!cat){ toast('Choose a category','warning'); return; }
   let s=DB.students.find(x=>x.name.toLowerCase()===name.toLowerCase());
   if(!s){ s={id:uid('s_'),name,year:'Unknown',form:'—',keyAdult:ME.name,flags:[]}; DB.students.push(s); }
+  const strategies = Array.from(document.querySelectorAll('input[name="rStrategy"]:checked')).map(cb=> cb.value);
   const now=new Date().toISOString();
   const c={ id:uid('c_'), studentId:s.id, studentName:s.name, year:s.year,
     category:cat, subcategory:$('rSubcategory').value||'', risk:$('rRisk').value,
-    department:$('rDepartment').value||'',
+    department:$('rDepartment').value||'', strategies:strategies,
     status:'New', description:$('rDesc').value.trim()||'No description provided.',
     location:$('rLocation').value.trim()||'—', reporter:$('rReporter').value.trim()||ME.name,
     assignee:s.keyAdult||ME.name, date:now,
@@ -1398,6 +1434,8 @@ function openCase(id){
     return `<button onclick="toggleAgency('${key}')" class="w-full flex items-center justify-between px-3 h-11 rounded-xl border-2 ${on?`border-${a.color} bg-${a.color}Soft`:'border-line bg-card'} transition-colors">
       <span class="flex items-center gap-2 text-xs font-bold text-${a.color}"><i data-lucide="${a.icon}" class="w-4 h-4"></i>${a.label}</span>
       <i data-lucide="${on?'check':'plus'}" class="w-4 h-4 text-${on?a.color:'slate-300'}"></i></button>`; }).join('');
+  // strategies
+  $('caseStrategies').innerHTML = (c.strategies||[]).length? (c.strategies||[]).map(key=>{ const s=STRATEGIES[key]; return `<div class="flex items-start gap-2"><i data-lucide="check" class="w-3.5 h-3.5 text-ok mt-0.5 shrink-0"></i><span>${esc(s?.label||key)}</span></div>`; }).join('') : '<span class="text-slate-400 italic">None recorded</span>';
   // meta
   $('caseMeta').innerHTML = [['Logged',fmtDate(c.date)+' '+fmtTime(c.date)],['Reported by',c.reporter],['Department',c.department||'—'],['Location',c.location||'—'],['Reference',c.id.slice(0,8).toUpperCase()]]
     .map(([k2,v])=>`<div class="flex justify-between gap-2"><span class="text-slate-400 font-medium">${k2}</span><span class="text-ink font-semibold text-right">${esc(v)}</span></div>`).join('');
