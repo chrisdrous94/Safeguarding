@@ -38,6 +38,16 @@ function genCode(len){
   return out.join('');
 }
 
+function isStrongPassword(code){
+  const s = norm(code);
+  return s.length>=12 &&
+    /[A-Z]/.test(s) &&
+    /[a-z]/.test(s) &&
+    /[0-9]/.test(s) &&
+    /[^A-Za-z0-9]/.test(s) &&
+    !/\s/.test(s);
+}
+
 function getOrCreateSheet(name, headers){
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sh = ss.getSheetByName(name);
@@ -302,6 +312,37 @@ function loginByCode(code){
   return { ok:true, user:publicUser(users[idx]) };
 }
 
+function changeOwnCode(currentCode, newCode){
+  const cur = norm(currentCode);
+  const nxt = norm(newCode);
+
+  if(!cur || !nxt) return { ok:false, error:'Current and new password are required' };
+  if(cur===nxt) return { ok:false, error:'New password must be different' };
+  if(!isStrongPassword(nxt)) return { ok:false, error:'New password does not meet security requirements' };
+
+  if(isAdminCode(cur)){
+    try {
+      PropertiesService.getScriptProperties().setProperty('ADMIN_CODE', normUpper(nxt));
+      return { ok:true };
+    } catch(e) {
+      return { ok:false, error:'Could not update admin password' };
+    }
+  }
+
+  const users = loadUsers();
+  const curHash = hashCode(cur);
+  const curLegacy = hashCodeLegacy(cur);
+  const idx = users.findIndex(function(u){ return u.codeHash===curHash || u.codeHash===curLegacy; });
+
+  if(idx<0) return { ok:false, error:'Current password is incorrect' };
+  if(!users[idx].active) return { ok:false, error:'This account is deactivated' };
+
+  users[idx].codeHash = hashCode(nxt);
+  users[idx].updatedAt = nowIso();
+  saveUsers(users);
+  return { ok:true };
+}
+
 function listUsers(adminCode){
   const auth = requireAdmin(adminCode);
   if(!auth.ok) return { ok:false, error:auth.error };
@@ -428,6 +469,7 @@ function doGet(e){
     const action = norm(e && e.parameter && e.parameter.action) || 'getCases';
     if(action==='getCases') return jsonOut(getCases());
     if(action==='login') return jsonOut(loginByCode(e.parameter.code));
+    if(action==='changeOwnCode') return jsonOut(changeOwnCode(e.parameter.currentCode, e.parameter.newCode));
     if(action==='listUsers') return jsonOut(listUsers(e.parameter.adminCode));
     if(action==='saveUser') return jsonOut(saveUserAction(e.parameter.adminCode, e.parameter.id, e.parameter.firstName, e.parameter.lastName, e.parameter.role));
     if(action==='regenUserCode') return jsonOut(regenUserCode(e.parameter.adminCode, e.parameter.id));

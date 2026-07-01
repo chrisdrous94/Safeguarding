@@ -604,7 +604,31 @@ tailwind.config = {
     </div>
     <div class="px-5 sm:px-7 py-4 border-t border-line bg-card flex justify-end gap-2">
       <button onclick="closeModal('settingsModal')" class="h-11 px-5 rounded-full text-sm font-bold text-slate-600 hover:bg-dim">Cancel</button>
+      <button onclick="openChangePasswordModal()" class="h-11 px-5 rounded-full bg-dim hover:bg-line text-sm font-bold text-slate-700">Change password</button>
       <button onclick="saveSettings()" class="h-11 px-7 rounded-full bg-brand hover:bg-brandDark text-white text-sm font-bold shadow-soft">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== CHANGE PASSWORD MODAL ===================== -->
+<div id="changePwdModal" onclick="if(event.target===this)closeModal('changePwdModal')" class="fixed inset-0 z-[120] hidden bg-ink/50 backdrop-blur-sm flex items-center justify-center p-4 opacity-0 transition-opacity">
+  <div class="bg-surface w-full max-w-md rounded-4xl shadow-lift p-6 pop">
+    <h3 class="font-display font-bold text-ink mb-4">Change password</h3>
+
+    <label class="block text-xs font-bold text-slate-600 mb-1.5">Current password</label>
+    <input id="pwdCurrent" type="password" class="w-full h-11 px-3 rounded-xl bg-card border border-line text-sm font-medium mb-3">
+
+    <label class="block text-xs font-bold text-slate-600 mb-1.5">New password</label>
+    <input id="pwdNew" type="password" class="w-full h-11 px-3 rounded-xl bg-card border border-line text-sm font-medium mb-2">
+
+    <label class="block text-xs font-bold text-slate-600 mb-1.5">Confirm new password</label>
+    <input id="pwdConfirm" type="password" class="w-full h-11 px-3 rounded-xl bg-card border border-line text-sm font-medium mb-4">
+
+    <p class="text-[11px] text-slate-400 font-medium mb-4">Use at least 12 characters with uppercase, lowercase, number and symbol.</p>
+
+    <div class="flex justify-end gap-2">
+      <button onclick="closeModal('changePwdModal')" class="h-11 px-5 rounded-full text-sm font-bold text-slate-600 hover:bg-dim">Cancel</button>
+      <button onclick="submitPasswordChange()" class="h-11 px-6 rounded-full bg-brand hover:bg-brandDark text-white text-sm font-bold">Update</button>
     </div>
   </div>
 </div>
@@ -983,6 +1007,56 @@ function saveSettings(){
   paintUser(); applyRoleLayout(); closeModal('settingsModal');
   toast('Settings saved');
   if(SOURCE==='live' && SCRIPT_URL) syncData(); else { renderAll(); }
+}
+function openChangePasswordModal(){
+  $('pwdCurrent').value='';
+  $('pwdNew').value='';
+  $('pwdConfirm').value='';
+  openModal('changePwdModal');
+}
+function isStrongPassword(v){
+  return typeof v==='string' &&
+    v.length>=12 &&
+    /[A-Z]/.test(v) &&
+    /[a-z]/.test(v) &&
+    /[0-9]/.test(v) &&
+    /[^A-Za-z0-9]/.test(v) &&
+    !/\s/.test(v);
+}
+async function submitPasswordChange(){
+  const current=($('pwdCurrent').value||'').trim();
+  const next=($('pwdNew').value||'').trim();
+  const confirmVal=($('pwdConfirm').value||'').trim();
+
+  if(!current || !next || !confirmVal){ toast('Complete all password fields','warning'); return; }
+  if(next!==confirmVal){ toast('New passwords do not match','warning'); return; }
+  if(current===next){ toast('New password must be different','warning'); return; }
+  if(!isStrongPassword(next)){ toast('Use 12+ chars with upper, lower, number and symbol','warning'); return; }
+
+  try{
+    let data;
+    if(CAN_USE_APPS_SCRIPT()){
+      data = await scriptGet('changeOwnCode', { currentCode:current, newCode:next });
+    } else {
+      toast('Password change is available in live Apps Script mode','warning');
+      return;
+    }
+
+    if(!data || !data.ok){ toast((data&&data.error)||'Password update failed','error'); return; }
+    ME.code = next;
+    const raw=LS.get('ics_auth');
+    if(raw){
+      try{
+        const s=JSON.parse(raw);
+        s.code = next;
+        LS.set('ics_auth', JSON.stringify(s));
+      }catch(_e){}
+    }
+    closeModal('changePwdModal');
+    toast('Password updated successfully','success');
+  }catch(e){
+    toast('Could not update password','error');
+  }
 }
 // resetDemo removed for production
 function paintUser(){
