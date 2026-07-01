@@ -369,6 +369,53 @@ function deleteUser(adminCode, id){
   return { ok:true };
 }
 
+function findUserByName(name){
+  const n = norm(name).toLowerCase();
+  return loadUsers().find(function(u){
+    return (normLower(u.firstName) + ' ' + normLower(u.lastName)).trim() === n;
+  });
+}
+
+function notifyAssignee(assignee, caseId, studentName, category, notifier){
+  const u = findUserByName(assignee);
+  if(!u || !u.email) return { ok:true, skipped:'no email registered' };
+  try {
+    MailApp.sendEmail({
+      to: u.email,
+      subject: '[Safeguarding] You have been assigned a case: ' + studentName,
+      body: 'You have been assigned to a safeguarding case by ' + (notifier||'the system') + '.\n\n'
+          + 'Student: ' + studentName + '\n'
+          + 'Category: ' + category + '\n'
+          + 'Case reference: ' + caseId + '\n\n'
+          + 'Please log in to review the full case record, chronology and any outstanding actions.\n\n'
+          + 'This is an automated notification. Do not reply to this email.'
+    });
+    return { ok:true };
+  } catch(err) {
+    return { ok:true, skipped:String(err) };
+  }
+}
+
+function notifyActionOwner(owner, caseId, studentName, actionText, notifier){
+  const u = findUserByName(owner);
+  if(!u || !u.email) return { ok:true, skipped:'no email registered' };
+  try {
+    MailApp.sendEmail({
+      to: u.email,
+      subject: '[Safeguarding] New action assigned to you – ' + studentName,
+      body: 'A new action has been assigned to you by ' + (notifier||'the system') + '.\n\n'
+          + 'Student: ' + studentName + '\n'
+          + 'Action: ' + actionText + '\n'
+          + 'Case reference: ' + caseId + '\n\n'
+          + 'Please log in to review and complete this action.\n\n'
+          + 'This is an automated notification. Do not reply to this email.'
+    });
+    return { ok:true };
+  } catch(err) {
+    return { ok:true, skipped:String(err) };
+  }
+}
+
 function doGet(e){
   try {
     const action = norm(e && e.parameter && e.parameter.action) || 'getCases';
@@ -380,6 +427,8 @@ function doGet(e){
     if(action==='regenUserCode') return jsonOut(regenUserCode(e.parameter.adminCode, e.parameter.id));
     if(action==='toggleUser') return jsonOut(toggleUser(e.parameter.adminCode, e.parameter.id));
     if(action==='deleteUser') return jsonOut(deleteUser(e.parameter.adminCode, e.parameter.id));
+    if(action==='notifyAssignee') return jsonOut(notifyAssignee(e.parameter.assignee, e.parameter.caseId, e.parameter.studentName, e.parameter.category, e.parameter.notifier));
+    if(action==='notifyActionOwner') return jsonOut(notifyActionOwner(e.parameter.owner, e.parameter.caseId, e.parameter.studentName, e.parameter.actionText, e.parameter.notifier));
     return jsonOut({ ok:false, error:'Unknown action' });
   } catch(err){
     return jsonOut({ ok:false, error:String(err) });
