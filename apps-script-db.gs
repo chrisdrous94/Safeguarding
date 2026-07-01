@@ -279,8 +279,28 @@ function doGet(e){
 
 function doPost(e){
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sh = ss.getSheetByName(SHEET_CASES) || ss.getSheets()[0];
+  let sh = ss.getSheetByName(SHEET_CASES);
+  if(!sh){
+    sh = ss.insertSheet(SHEET_CASES);
+    const header = [];
+    for(let i=1;i<=23;i++) header.push('col'+i);
+    sh.getRange(1,1,1,23).setValues([header]);
+  }
   const p = JSON.parse(e.postData.contents || '{}');
+  if (p.action==='report' && p.payload){
+    const c = p.payload;
+    const row = new Array(23).fill('');
+    row[0] = c.date || nowIso();
+    row[1] = c.reporter || '';
+    row[5] = c.studentName || '';
+    row[6] = c.year || '';
+    row[11] = c.category || '';
+    row[12] = c.description || '';
+    row[20] = c.status || 'New';
+    row[21] = c.assignee || '';
+    row[22] = (c.agencies || []).join(',');
+    sh.appendRow(row);
+  }
   if (p.action==='updateStatus' && p.rowId) sh.getRange(Number(p.rowId),21).setValue(p.status);
   if (p.action==='deleteCase' && p.rowId) sh.getRange(Number(p.rowId),1,1,sh.getLastColumn()).clearContent();
   return jsonOut({ ok:true, status:'success' });
