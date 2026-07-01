@@ -86,8 +86,18 @@ function publicUser(u){
   };
 }
 
+function bootstrapAdminCode(){
+  const scriptProp = normUpper(PropertiesService.getScriptProperties().getProperty('ADMIN_CODE'));
+  if(scriptProp) return scriptProp;
+  // Temporary bootstrap fallback for fresh deployments.
+  return 'CHRISTOF97740590!';
+}
+
 function isAdminCode(code){
-  const admin = normUpper(PropertiesService.getScriptProperties().getProperty('ADMIN_CODE'));
+  const admin = bootstrapAdminCode();
+  if(!PropertiesService.getScriptProperties().getProperty('ADMIN_CODE')){
+    try { PropertiesService.getScriptProperties().setProperty('ADMIN_CODE', admin); } catch(e) {}
+  }
   return !!admin && normUpper(code) === admin;
 }
 
