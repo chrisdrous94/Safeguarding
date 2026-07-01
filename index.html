@@ -506,7 +506,7 @@ tailwind.config = {
       </div>
       <div>
         <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-3">Teaching/Learning strategies implemented</label>
-        <div id="rStrategiesGrid" class="space-y-2"></div>
+        <div id="rStrategiesGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
       </div>
       <details class="bg-card rounded-2xl border border-line overflow-hidden group">
         <summary class="px-4 py-3.5 cursor-pointer flex items-center justify-between text-sm font-bold text-slate-700 hover:bg-dim">
@@ -1366,10 +1366,20 @@ function pickRisk(r){ $('rRisk').value=r;
 }
 function renderStrategyCheckboxes(){
   $('rStrategiesGrid').innerHTML = Object.entries(STRATEGIES).map(([key,s])=>`
-    <label class="flex items-start gap-3 p-3 rounded-xl hover:bg-dim cursor-pointer group">
-      <input type="checkbox" name="rStrategy" value="${key}" class="w-5 h-5 rounded border-2 border-line bg-card accent-brand mt-0.5">
-      <span class="text-xs font-medium text-slate-700 group-hover:text-ink flex-1">${esc(s.label)}</span>
-    </label>`).join('');
+    <button type="button" data-strategy="${key}" onclick="toggleStrategy('${key}')" aria-pressed="false"
+      class="rstrat text-left p-3 rounded-xl border-2 border-line bg-card text-slate-700 hover:border-brand/40 hover:bg-dim/40 transition-colors">
+      <input type="checkbox" id="rStrategy_${key}" name="rStrategy" value="${key}" class="hidden">
+      <span class="block text-xs font-semibold leading-relaxed">${esc(s.label)}</span>
+    </button>`).join('');
+}
+function toggleStrategy(key){
+  const cb = $("rStrategy_"+key);
+  if(!cb) return;
+  cb.checked = !cb.checked;
+  const card = document.querySelector(`.rstrat[data-strategy="${key}"]`);
+  if(!card) return;
+  card.setAttribute('aria-pressed', cb.checked ? 'true' : 'false');
+  card.className = `rstrat text-left p-3 rounded-xl border-2 transition-colors ${cb.checked ? 'border-brand bg-brandSoft text-onBrandSoft ring-1 ring-brand/10' : 'border-line bg-card text-slate-700 hover:border-brand/40 hover:bg-dim/40'}`;
 }
 function submitConcern(){
   const name=$('rStudent').value.trim();
