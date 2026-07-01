@@ -121,7 +121,7 @@ function requireAdmin(adminCode){
 }
 
 function caseHeaders(){
-  return ['id','timestamp','reporter','studentId','studentName','year','category','subcategory','risk','status','description','location','assignee','agencies','bodyMap','timeline','actions'];
+  return ['id','timestamp','reporter','studentId','studentName','year','category','subcategory','risk','status','description','location','assignee','department','agencies','bodyMap','timeline','actions'];
 }
 
 function ensureCasesSheet(){
@@ -134,17 +134,30 @@ function parseJsonCell(value, fallback){
   try { return JSON.parse(value); } catch(e) { return fallback; }
 }
 
+function isModernCaseRow(row){
+  if(!row || row.length < 18) return false;
+  const id = String(row[0] || '');
+  const studentId = String(row[3] || '');
+  const jsonAgencies = parseJsonCell(row[14], null);
+  const jsonBodyMap = parseJsonCell(row[15], null);
+  const jsonTimeline = parseJsonCell(row[16], null);
+  const jsonActions = parseJsonCell(row[17], null);
+  const hasJsonColumns = Array.isArray(jsonAgencies) || Array.isArray(jsonBodyMap) || Array.isArray(jsonTimeline) || Array.isArray(jsonActions);
+  return id.indexOf('c_')===0 || studentId.indexOf('s_')===0 || hasJsonColumns;
+}
+
 function getCases(){
   const sh = ensureCasesSheet();
   const rows = sh.getDataRange().getValues();
   const headers = rows[0] || [];
-  const hasJson = headers.indexOf('payloadJson') >= 0 || headers.indexOf('actions') >= 0;
+  const hasJsonHeader = headers.indexOf('payloadJson') >= 0 || headers.indexOf('actions') >= 0;
   const cases = [];
   const byId = {};
   for(let i=1;i<rows.length;i++){
     const row = rows[i];
     if(String(row.join('')).trim()==='') continue;
-    if(hasJson){
+    const modernRow = hasJsonHeader || isModernCaseRow(row);
+    if(modernRow){
       const c = {
         id: row[0] || ('c_' + i),
         date: row[1] || '',
@@ -159,10 +172,11 @@ function getCases(){
         description: row[10] || '',
         location: row[11] || '',
         assignee: row[12] || '',
-        agencies: parseJsonCell(row[13], []),
-        bodyMap: parseJsonCell(row[14], []),
-        timeline: parseJsonCell(row[15], []),
-        actions: parseJsonCell(row[16], [])
+        department: row[13] || '',
+        agencies: parseJsonCell(row[14], []),
+        bodyMap: parseJsonCell(row[15], []),
+        timeline: parseJsonCell(row[16], []),
+        actions: parseJsonCell(row[17], [])
       };
       const out = {
         id:c.id,
@@ -178,6 +192,7 @@ function getCases(){
         location:c.location,
         status:c.status,
         assignee:c.assignee,
+        department:c.department,
         agencies:Array.isArray(c.agencies) ? c.agencies.join(',') : String(c.agencies||''),
         bodyMap:c.bodyMap,
         timeline:c.timeline,
@@ -226,6 +241,7 @@ function normalizeCasePayload(p){
     description: p.description || '',
     location: p.location || '',
     assignee: p.assignee || '',
+    department: p.department || '',
     agencies: Array.isArray(p.agencies) ? p.agencies : String(p.agencies || '').split(',').filter(Boolean),
     bodyMap: Array.isArray(p.bodyMap) ? p.bodyMap : [],
     timeline: Array.isArray(p.timeline) ? p.timeline : [],
@@ -238,7 +254,7 @@ function upsertCaseRecord(payload){
   const cases = getCases().data || [];
   const c = normalizeCasePayload(payload);
   const idx = cases.findIndex(function(x){ return x.id === c.id; });
-  const row = [c.id,c.date,c.reporter,c.studentId,c.studentName,c.year,c.category,c.subcategory,c.risk,c.status,c.description,c.location,c.assignee,JSON.stringify(c.agencies),JSON.stringify(c.bodyMap),JSON.stringify(c.timeline),JSON.stringify(c.actions)];
+  const row = [c.id,c.date,c.reporter,c.studentId,c.studentName,c.year,c.category,c.subcategory,c.risk,c.status,c.description,c.location,c.assignee,c.department,JSON.stringify(c.agencies),JSON.stringify(c.bodyMap),JSON.stringify(c.timeline),JSON.stringify(c.actions)];
   if(idx >= 0){
     const targetRow = Number(cases[idx].rowId || (idx + 2));
     sh.getRange(targetRow, 1, 1, row.length).setValues([row]);

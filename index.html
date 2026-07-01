@@ -466,6 +466,17 @@ tailwind.config = {
         <p class="text-[11px] text-slate-400 mt-1.5 font-medium">New name? It will be added to the register automatically.</p>
       </div>
       <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Department</label>
+        <select id="rDepartment" class="w-full h-12 px-4 rounded-2xl bg-card border border-line text-sm font-semibold text-slate-700">
+          <option value="">Select department…</option>
+          <option value="Primary">Primary</option>
+          <option value="Secondary">Secondary</option>
+          <option value="Extra">Extra</option>
+          <option value="Camps">Camps</option>
+          <option value="Weekend Club">Weekend Club</option>
+        </select>
+      </div>
+      <div>
         <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Category of concern</label>
         <div id="rCategoryGrid" class="grid grid-cols-2 sm:grid-cols-3 gap-2"></div>
         <input type="hidden" id="rCategory">
@@ -726,6 +737,10 @@ const CATEGORIES = {
   'Radicalisation':      { icon:'flag', color:'high', subs:['Extremist views','Prevent referral','Online radicalisation'] },
   'Attendance':          { icon:'calendar-x', color:'med', subs:['Persistent absence','Unexplained absence','Missing from education'] },
   'Substance misuse':    { icon:'pill', color:'med', subs:['Alcohol','Drugs','Supply concern'] },
+  'Communication and Language': { icon:'message-circle', color:'med', subs:['Delayed speech / language','Difficulty expressing needs','Speech / language disorder','Selective mutism','Accent / dialect difference'] },
+  'Cognition and Learning': { icon:'lightbulb', color:'med', subs:['Difficulty with understanding','Difficulty processing information','Difficulty completing work','Learning disability','Development delay'] },
+  'Social Interaction': { icon:'users-round', color:'med', subs:['Difficulty working with peers','Social isolation','Withdrawn behaviour','Difficulty making friends','Social anxiety'] },
+  'Behaviour':           { icon:'alert-triangle', color:'high', subs:['Disruptive behaviour','Aggression / violence','Non-compliance / defiance','Repeated rule-breaking','Emotional dysregulation'] },
   'Other welfare':       { icon:'info', color:'low', subs:['Bereavement','Young carer pressure','Housing / poverty','General wellbeing'] }
 };
 
@@ -1250,8 +1265,8 @@ function renderTasks(){
   icons();
 }
 function exportCSV(){
-  const rows=[['Student','Year','Category','Subcategory','Risk','Status','Assignee','Reporter','Agencies','Logged','Description']];
-  filteredConcerns().forEach(c=> rows.push([c.studentName,c.year,c.category,c.subcategory,c.risk,c.status,c.assignee,c.reporter,(c.agencies||[]).join(' '),fmtDate(c.date),(c.description||'').replace(/\s+/g,' ')]));
+  const rows=[['Student','Year','Category','Subcategory','Risk','Status','Assignee','Reporter','Department','Agencies','Logged','Description']];
+  filteredConcerns().forEach(c=> rows.push([c.studentName,c.year,c.category,c.subcategory,c.risk,c.status,c.assignee,c.reporter,c.department||'—',(c.agencies||[]).join(' '),fmtDate(c.date),(c.description||'').replace(/\s+/g,' ')]));
   downloadCSV(rows, `safeguarding-concerns-${new Date().toISOString().slice(0,10)}.csv`);
   logAudit('Report exported','Concerns CSV'); persist(); toast('Export downloaded');
 }
@@ -1292,6 +1307,7 @@ function openReport(prefillName){
   reportBodyMap=[];
   $('rStudent').value=prefillName||''; $('rCategory').value=''; $('rDesc').value='';
   $('rLocation').value=''; $('rReporter').value=ME.name; $('rRisk').value='Medium';
+  $('rDepartment').value='';
   $('rSubWrap').classList.add('hidden');
   $('rCategoryGrid').innerHTML = Object.entries(CATEGORIES).map(([name,m])=>`
     <button type="button" data-cat="${esc(name)}" aria-pressed="false" onclick="pickCategory('${esc(name)}')" class="rcat flex items-center gap-2 px-3 h-12 rounded-2xl border-2 border-line bg-card text-left transition-colors hover:border-brand/40 hover:bg-dim/40">
@@ -1330,6 +1346,7 @@ function submitConcern(){
   const now=new Date().toISOString();
   const c={ id:uid('c_'), studentId:s.id, studentName:s.name, year:s.year,
     category:cat, subcategory:$('rSubcategory').value||'', risk:$('rRisk').value,
+    department:$('rDepartment').value||'',
     status:'New', description:$('rDesc').value.trim()||'No description provided.',
     location:$('rLocation').value.trim()||'—', reporter:$('rReporter').value.trim()||ME.name,
     assignee:s.keyAdult||ME.name, date:now,
@@ -1382,7 +1399,7 @@ function openCase(id){
       <span class="flex items-center gap-2 text-xs font-bold text-${a.color}"><i data-lucide="${a.icon}" class="w-4 h-4"></i>${a.label}</span>
       <i data-lucide="${on?'check':'plus'}" class="w-4 h-4 text-${on?a.color:'slate-300'}"></i></button>`; }).join('');
   // meta
-  $('caseMeta').innerHTML = [['Logged',fmtDate(c.date)+' '+fmtTime(c.date)],['Reported by',c.reporter],['Location',c.location||'—'],['Reference',c.id.slice(0,8).toUpperCase()]]
+  $('caseMeta').innerHTML = [['Logged',fmtDate(c.date)+' '+fmtTime(c.date)],['Reported by',c.reporter],['Department',c.department||'—'],['Location',c.location||'—'],['Reference',c.id.slice(0,8).toUpperCase()]]
     .map(([k2,v])=>`<div class="flex justify-between gap-2"><span class="text-slate-400 font-medium">${k2}</span><span class="text-ink font-semibold text-right">${esc(v)}</span></div>`).join('');
   renderCaseActions(c); renderCaseTimeline(c);
   openModal('caseModal'); icons();
