@@ -12,15 +12,30 @@ function normUpper(s){ return norm(s).toUpperCase(); }
 function normLower(s){ return norm(s).toLowerCase(); }
 
 function hashCode(code){
+  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, norm(code));
+  return bytes.map(function(b){ const v=(b<0?b+256:b).toString(16); return v.length===1?'0'+v:v; }).join('');
+}
+
+function hashCodeLegacy(code){
   const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, normUpper(code));
   return bytes.map(function(b){ const v=(b<0?b+256:b).toString(16); return v.length===1?'0'+v:v; }).join('');
 }
 
 function genCode(len){
-  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let out='';
-  for(let i=0;i<(len||8);i++) out += chars.charAt(Math.floor(Math.random()*chars.length));
-  return out;
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower = 'abcdefghijkmnopqrstuvwxyz';
+  const digits = '23456789';
+  const symbols = '!@#$%^&*_-+=';
+  const all = upper + lower + digits + symbols;
+  const size = Math.max(12, len || 14);
+  const pick = function(chars){ return chars.charAt(Math.floor(Math.random()*chars.length)); };
+  const out = [pick(upper), pick(lower), pick(digits), pick(symbols)];
+  for(let i=out.length;i<size;i++) out.push(pick(all));
+  for(let i=out.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    const t = out[i]; out[i]=out[j]; out[j]=t;
+  }
+  return out.join('');
 }
 
 function getOrCreateSheet(name, headers){
@@ -105,8 +120,9 @@ function requireAdmin(adminCode){
   if(isAdminCode(adminCode)) return { ok:true, admin:{ id:'__admin__', firstName:'System', lastName:'Admin', role:'Lead DSL' } };
   const users = loadUsers();
   const codeHash = hashCode(adminCode);
+  const codeHashLegacy = hashCodeLegacy(adminCode);
   const u = users.find(function(x){
-    return x.active && x.codeHash === codeHash && (x.role==='Lead DSL' || x.role==='Senior Leadership');
+    return x.active && (x.codeHash === codeHash || x.codeHash === codeHashLegacy) && (x.role==='Lead DSL' || x.role==='Senior Leadership');
   });
   if(u) return { ok:true, admin:u };
   const activeAdminUsers = users.filter(function(x){
@@ -268,63 +284,22 @@ function upsertCaseRecord(payload){
 }
 
 function loginByCode(code){
-  const c = normUpper(code);
+  const c = norm(code);
   if(!c) return { ok:false, error:'Access code is required' };
   if(isAdminCode(c)){
     return { ok:true, user:{ id:'__admin__', firstName:'System', lastName:'Admin', role:'Lead DSL' } };
   }
   const users = loadUsers();
   const codeHash = hashCode(c);
-  const idx = users.findIndex(function(u){ return u.codeHash===codeHash; });
+  const codeHashLegacy = hashCodeLegacy(c);
+  const idx = users.findIndex(function(u){ return u.codeHash===codeHash || u.codeHash===codeHashLegacy; });
   if(idx<0) return { ok:false, error:'Access code not recognized' };
   if(!users[idx].active) return { ok:false, error:'This access code has been deactivated.' };
+  if(users[idx].codeHash===codeHashLegacy) users[idx].codeHash = codeHash;
   users[idx].lastLogin = nowIso();
   users[idx].updatedAt = nowIso();
   saveUsers(users);
   return { ok:true, user:publicUser(users[idx]) };
-}
-
-function verifyEmail(email){
-  const e = normLower(email);
-  if(!e || e.indexOf('@')===-1) return { ok:false, error:'Invalid email' };
-
-  const users = loadUsers();
-  let u = users.find(function(x){ return normLower(x.email)===e; });
-  const code = genCode(8);
-  const codeHash = hashCode(code);
-
-  if(!u){
-    u = {
-      id: 'u_' + Utilities.getUuid().replace(/-/g,'').slice(0,12),
-      firstName: e.split('@')[0],
-      lastName: '',
-      role: 'Teacher',
-      email: e,
-      codeHash: codeHash,
-      active: true,
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-      lastLogin: ''
-    };
-    users.push(u);
-  } else {
-    u.codeHash = codeHash;
-    u.active = true;
-    u.updatedAt = nowIso();
-  }
-  saveUsers(users);
-
-  try {
-    MailApp.sendEmail({
-      to: e,
-      subject: 'Your Safeguarding Access Code',
-      body: 'Your access code is: ' + code + '\n\nUse this code to sign in.'
-    });
-  } catch(err) {
-    // Keep response generic for privacy/security
-  }
-
-  return { ok:true, message:'If the email is registered, an access code will be sent shortly.' };
 }
 
 function listUsers(adminCode){
@@ -347,7 +322,7 @@ function saveUserAction(adminCode, id, firstName, lastName, role){
     return { ok:true, user:publicUser(u) };
   }
 
-  const code = genCode(8);
+  const code = genCode(14);
   u = {
     id: 'u_' + Utilities.getUuid().replace(/-/g,'').slice(0,12),
     firstName: fn,
@@ -373,7 +348,7 @@ function regenUserCode(adminCode, id){
   const users = loadUsers();
   const u = users.find(function(x){ return x.id===id; });
   if(!u) return { ok:false, error:'User not found' };
-  const code = genCode(8);
+  const code = genCode(14);
   u.codeHash = hashCode(code);
   u.updatedAt = nowIso();
   saveUsers(users);
@@ -453,7 +428,6 @@ function doGet(e){
     const action = norm(e && e.parameter && e.parameter.action) || 'getCases';
     if(action==='getCases') return jsonOut(getCases());
     if(action==='login') return jsonOut(loginByCode(e.parameter.code));
-    if(action==='verifyEmail') return jsonOut(verifyEmail(e.parameter.email));
     if(action==='listUsers') return jsonOut(listUsers(e.parameter.adminCode));
     if(action==='saveUser') return jsonOut(saveUserAction(e.parameter.adminCode, e.parameter.id, e.parameter.firstName, e.parameter.lastName, e.parameter.role));
     if(action==='regenUserCode') return jsonOut(regenUserCode(e.parameter.adminCode, e.parameter.id));
