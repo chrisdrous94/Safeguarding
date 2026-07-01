@@ -1290,10 +1290,20 @@ function renderConcerns(){
 function renderStudents(){
   const q=($('stuSearch')?.value||'').toLowerCase();
   const flag=$('stuFlag')?.value||'All';
+  const isDSL = ME.role==='Lead DSL' || ME.role==='Senior Leadership';
+  const myName = (ME.name||'').toLowerCase().trim();
   let list=DB.students.filter(s=>{
     if(q && !`${s.name} ${s.form} ${s.year}`.toLowerCase().includes(q)) return false;
     if(flag==='risk'){ if(!casesForStudent(s.id).some(isOpen)) return false; }
     else if(flag!=='All'){ if(!(s.flags||[]).includes(flag)) return false; }
+    // Non-DSL users only see students they're assigned to
+    if(!isDSL){
+      const assignedCases = casesForStudent(s.id).filter(c=>{
+        const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(str=>str.trim()).filter(Boolean);
+        return assigneeList.some(a => a.toLowerCase().trim() === myName);
+      });
+      if(!assignedCases.length) return false;
+    }
     return true;
   }).sort((a,b)=> RISK[safeRisk(studentRisk(b.id).color==='crit'?'Critical':studentRisk(b.id).color==='high'?'High':studentRisk(b.id).color==='med'?'Medium':'Low')].rank - RISK[safeRisk(studentRisk(a.id).color==='crit'?'Critical':studentRisk(a.id).color==='high'?'High':studentRisk(a.id).color==='med'?'Medium':'Low')].rank);
   $('studentGrid').innerHTML = list.map(s=>{
@@ -1514,6 +1524,9 @@ function openCase(id){
   const assignees=assigneeNames();
   const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(s=>s.trim()).filter(Boolean);
   $('caseAssignee').innerHTML='<option value="">Unassigned</option>'+assignees.map(t=>`<option ${assigneeList.includes(t)?'selected':''}>${esc(t)}</option>`).join('');
+  const isDSL = ME.role==='Lead DSL' || ME.role==='Senior Leadership';
+  $('caseAssignee').disabled = !isDSL;
+  $('caseStatus').disabled = !isDSL;
   // agencies
   $('caseAgencies').innerHTML = Object.entries(AGENCIES).map(([key,a])=>{ const on=(c.agencies||[]).includes(key);
     return `<button onclick="toggleAgency('${key}')" class="w-full flex items-center justify-between px-3 h-11 rounded-xl border-2 ${on?`border-${a.color} bg-${a.color}Soft`:'border-line bg-card'} transition-colors">
@@ -1550,7 +1563,10 @@ function changeStatus(){ const c=DB.cases.find(x=>x.id===activeCaseId); const v=
   c.status=v; c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'status',text:`Status changed to ${v}.`});
   logAudit('Status updated', `${c.studentName} → ${v}`); if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
   persist(); renderCaseTimeline(c); renderAll(); toast('Status updated'); }
-function changeAssignee(){ const c=DB.cases.find(x=>x.id===activeCaseId);
+function changeAssignee(){
+  const isDSL = ME.role==='Lead DSL' || ME.role==='Senior Leadership';
+  if(!isDSL) { toast('Only DSL can assign cases','warning'); return; }
+  const c=DB.cases.find(x=>x.id===activeCaseId);
   const selectedOptions = Array.from($('caseAssignee').selectedOptions).map(opt => opt.value).filter(Boolean);
   c.assignee = selectedOptions.length ? selectedOptions.join(',') : '';
   const assigneeText = selectedOptions.length ? `Assigned to ${selectedOptions.join(', ')}.` : 'Unassigned.';
