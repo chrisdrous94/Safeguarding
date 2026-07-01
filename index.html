@@ -119,6 +119,10 @@ tailwind.config = {
       <p class="text-center text-[11px] text-slate-400 font-medium pt-2">
         Need help? Ask your Designated Safeguarding Lead (DSL) for your code
       </p>
+
+      <button onclick="openPublicReportFromAuth()" class="w-full h-12 rounded-full bg-card border border-line hover:bg-dim text-slate-700 font-bold text-sm flex items-center justify-center gap-2 transition-all">
+        <i data-lucide="shield-plus" class="w-4 h-4"></i>Report a concern without signing in
+      </button>
     </div>
 
   </div>
@@ -408,12 +412,12 @@ tailwind.config = {
 </div>
 
 <!-- ===================== REPORT A CONCERN MODAL ===================== -->
-<div id="reportModal" onclick="if(event.target===this)closeModal('reportModal')" class="fixed inset-0 z-[100] hidden bg-ink/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 transition-opacity">
+<div id="reportModal" onclick="if(event.target===this)closeReportModal()" class="fixed inset-0 z-[100] hidden bg-ink/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 transition-opacity">
   <div class="bg-surface w-full sm:max-w-3xl sm:rounded-5xl rounded-t-4xl shadow-lift max-h-[94vh] sm:max-h-[92vh] flex flex-col pop">
     <div class="px-5 sm:px-7 py-4 sm:py-5 flex items-center justify-between border-b border-line bg-card sm:rounded-t-5xl rounded-t-4xl">
       <div class="flex items-center gap-3"><div class="w-10 h-10 rounded-2xl bg-brandSoft text-onBrandSoft grid place-items-center"><i data-lucide="shield-plus" class="w-5 h-5"></i></div>
       <div><h3 class="font-display font-bold text-ink">Report a concern</h3><p class="text-[11px] text-slate-400 font-medium">Logged immediately to the DSL team</p></div></div>
-      <button onclick="closeModal('reportModal')" class="w-9 h-9 grid place-items-center rounded-full hover:bg-dim text-slate-500"><i data-lucide="x" class="w-5 h-5"></i></button>
+      <button onclick="closeReportModal()" class="w-9 h-9 grid place-items-center rounded-full hover:bg-dim text-slate-500"><i data-lucide="x" class="w-5 h-5"></i></button>
     </div>
     <div class="overflow-y-auto scroll-thin px-5 sm:px-7 py-5 space-y-5">
       <div>
@@ -481,7 +485,7 @@ tailwind.config = {
     <div class="px-5 sm:px-7 py-4 border-t border-line bg-card flex items-center justify-between gap-3 sm:rounded-b-5xl">
       <p class="text-[11px] text-slate-400 font-medium hidden sm:block">All concerns are confidential and time-stamped.</p>
       <div class="flex gap-2 w-full sm:w-auto">
-        <button onclick="closeModal('reportModal')" class="flex-1 sm:flex-none h-12 px-5 rounded-full text-sm font-bold text-slate-600 hover:bg-dim">Cancel</button>
+        <button onclick="closeReportModal()" class="flex-1 sm:flex-none h-12 px-5 rounded-full text-sm font-bold text-slate-600 hover:bg-dim">Cancel</button>
         <button onclick="submitConcern()" id="submitBtn" class="flex-1 sm:flex-none h-12 px-7 rounded-full bg-brand hover:bg-brandDark text-white text-sm font-bold shadow-soft flex items-center justify-center gap-2"><i data-lucide="send" class="w-4 h-4"></i>Submit concern</button>
       </div>
     </div>
@@ -803,6 +807,7 @@ let activeStudentId = null;
 let charts = {};
 let reportBodyMap = [];
 let APP_USERS = [];
+let PUBLIC_REPORT_MODE = false;
 
 // ---------- tiny helpers ----------
 const $ = id => document.getElementById(id);
@@ -1350,6 +1355,19 @@ function renderAudit(){
 // ---------- modal plumbing ----------
 function openModal(id){ const m=$(id); m.classList.remove('hidden'); requestAnimationFrame(()=>m.classList.remove('opacity-0')); }
 function closeModal(id){ const m=$(id); m.classList.add('opacity-0'); setTimeout(()=>m.classList.add('hidden'),200); }
+function closeReportModal(){
+  closeModal('reportModal');
+  if(PUBLIC_REPORT_MODE){
+    PUBLIC_REPORT_MODE = false;
+    const overlay = $('authOverlay');
+    if(overlay){
+      overlay.classList.remove('hidden');
+      overlay.style.opacity = '1';
+      overlay.style.pointerEvents = 'auto';
+    }
+    setTimeout(()=>{ $('loginCode')?.focus(); }, 220);
+  }
+}
 function populateSelects(){
   const assignees=assigneeNames();
   const opts=assignees.map(t=>`<option>${esc(t)}</option>`).join('');
@@ -1375,6 +1393,17 @@ function openReport(prefillName){
   pickRisk('Medium');
   buildBodyMap($('bodyMapWrap'), reportBodyMap, true); renderBodyNotes(reportBodyMap);
   openModal('reportModal'); icons();
+}
+function openPublicReportFromAuth(){
+  PUBLIC_REPORT_MODE = true;
+  const overlay = $('authOverlay');
+  if(overlay){
+    overlay.style.opacity='0';
+    overlay.style.pointerEvents='none';
+    setTimeout(()=>overlay.classList.add('hidden'),180);
+  }
+  openReport('');
+  $('rReporter').value='';
 }
 function pickCategory(name){
   $('rCategory').value=name;
@@ -1421,18 +1450,19 @@ function submitConcern(){
   if(!s){ s={id:uid('s_'),name,year:'Unknown',form:'—',keyAdult:ME.name,flags:[]}; DB.students.push(s); }
   const strategies = Array.from(document.querySelectorAll('input[name="rStrategy"]:checked')).map(cb=> cb.value);
   const now=new Date().toISOString();
+  const reporterName=$('rReporter').value.trim()||ME.name||'Anonymous reporter';
   const c={ id:uid('c_'), studentId:s.id, studentName:s.name, year:s.year,
     category:cat, subcategory:$('rSubcategory').value||'', risk:$('rRisk').value,
     department:$('rDepartment').value||'', strategies:strategies,
     status:'New', description:$('rDesc').value.trim()||'No description provided.',
-    location:$('rLocation').value.trim()||'—', reporter:$('rReporter').value.trim()||ME.name,
+    location:$('rLocation').value.trim()||'—', reporter:reporterName,
     assignee:s.keyAdult||ME.name, date:now,
     agencies:[], actions:[], bodyMap:reportBodyMap.filter(m=>true),
-    timeline:[{time:now,author:$('rReporter').value.trim()||ME.name,type:'log',text:'Concern logged.'}] };
+    timeline:[{time:now,author:reporterName,type:'log',text:'Concern logged.'}] };
   DB.cases.unshift(c);
   logAudit('Concern logged', `${cat} · ${s.name}`, c.reporter);
   if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
-  persist(); closeModal('reportModal'); renderAll();
+  persist(); closeReportModal(); renderAll();
   toast('Concern submitted to the DSL team');
   go('concerns');
 }
