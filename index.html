@@ -523,7 +523,7 @@ tailwind.config = {
         <div class="lg:col-span-3 p-5 sm:p-7 space-y-5">
           <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Description</h4>
           <p id="caseDesc" class="text-sm text-slate-700 leading-relaxed bg-card p-4 rounded-2xl border border-line"></p></div>
-          <div id="caseBodyMapWrap" class="hidden"><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Body map</h4><div class="bg-card p-4 rounded-2xl border border-line flex justify-center"><div id="caseBodyMap" class="relative w-full max-w-[280px]"></div></div></div>
+          <div id="caseBodyMapWrap" class="hidden"><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Body map</h4><div class="bg-card p-4 rounded-2xl border border-line"><div class="flex justify-center"><div id="caseBodyMap" class="relative w-full max-w-[280px]"></div></div><div id="caseBodyMapNotes" class="mt-2 space-y-1"></div></div></div>
           <div>
             <div class="flex items-center justify-between mb-2"><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Actions</h4>
             <button onclick="addActionPrompt()" class="text-xs font-bold text-brand hover:text-brandDark flex items-center gap-1"><i data-lucide="plus" class="w-3.5 h-3.5"></i>Add action</button></div>
@@ -597,9 +597,9 @@ tailwind.config = {
           <div><label class="block text-xs font-bold text-slate-600 mb-1.5">Name</label><input id="setName" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-medium"></div>
           <div><label class="block text-xs font-bold text-slate-600 mb-1.5">Role</label>
           <select id="setRole" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-bold">
-            <option>Lead DSL</option><option>Deputy DSL</option><option>Senior Leadership</option><option>Pastoral Lead</option><option>Teacher</option></select></div>
+            <option>Lead DSL</option><option>Deputy DSL</option><option>Senior Leadership</option><option>SENDCO</option><option>Pastoral Lead</option><option>Teacher</option></select></div>
         </div>
-        <p class="text-[11px] text-slate-400 font-medium">Teachers and Deputy DSLs see only concerns assigned to them or that they reported. Lead DSL and SLT see all cases.</p>
+        <p class="text-[11px] text-slate-400 font-medium">Teachers, SENDCO and Deputy DSLs see concerns assigned to them, reported by them, and all concerns linked to students assigned to them. Lead DSL and SLT see all cases.</p>
       </div>
       <div class="bg-card rounded-2xl border border-line p-4 space-y-3">
         <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Data source</h4>
@@ -669,6 +669,7 @@ tailwind.config = {
         <label class="block text-xs font-bold text-slate-600 mb-1.5">Role</label>
         <select id="uRole" class="w-full h-11 px-3 rounded-xl bg-card border border-line text-sm font-bold text-slate-700">
           <option value="Teacher">Teacher</option>
+          <option value="SENDCO">SENDCO</option>
           <option value="Pastoral Lead">Pastoral Lead</option>
           <option value="Deputy DSL">Deputy DSL</option>
           <option value="Lead DSL">Lead DSL</option>
@@ -888,7 +889,8 @@ function logAudit(action, detail, who, when){
 // ---------- Role-based visibility ----------
 function visibleCases(){
   if(ME.role==='Lead DSL' || ME.role==='Senior Leadership') return DB.cases;
-  return DB.cases.filter(c => c.assignee===ME.name || c.reporter===ME.name);
+  const assignedStudentIds = new Set(DB.cases.filter(c=>c.assignee===ME.name).map(c=>c.studentId));
+  return DB.cases.filter(c => c.assignee===ME.name || c.reporter===ME.name || assignedStudentIds.has(c.studentId));
 }
 function studentById(id){ return DB.students.find(s=>s.id===id); }
 function casesForStudent(id){ return DB.cases.filter(c=>c.studentId===id).sort((a,b)=>new Date(b.date)-new Date(a.date)); }
@@ -905,6 +907,15 @@ function allActions(){
   const out=[];
   visibleCases().forEach(c=> (c.actions||[]).forEach(a=> out.push(Object.assign({caseId:c.id, student:c.studentName, category:c.category}, a))));
   return out;
+}
+function assigneeNames(){
+  return [...new Set([
+    ME.name,
+    ...APP_USERS,
+    ...DB.cases.map(c=>c.assignee).filter(Boolean),
+    ...DB.cases.map(c=>c.reporter).filter(Boolean),
+    ...TEAM
+  ].filter(Boolean))];
 }
 
 // ---------- Navigation ----------
@@ -1017,7 +1028,7 @@ function renderAll(){
   populateSelects(); icons();
 }
 function renderTeacherHome(){
-  const mine=DB.cases.filter(c=>c.reporter===ME.name).sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,12);
+  const mine=visibleCases().sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,12);
   const el=$('teacherConcerns'); if(!el) return;
   el.innerHTML=mine.length? mine.map(c=>`
     <div class="flex items-center gap-3 p-3 rounded-2xl border border-line bg-dim/40">
@@ -1238,7 +1249,7 @@ function renderAudit(){
 function openModal(id){ const m=$(id); m.classList.remove('hidden'); requestAnimationFrame(()=>m.classList.remove('opacity-0')); }
 function closeModal(id){ const m=$(id); m.classList.add('opacity-0'); setTimeout(()=>m.classList.add('hidden'),200); }
 function populateSelects(){
-  const assignees=[...new Set((APP_USERS.length ? APP_USERS : TEAM).filter(Boolean))];
+  const assignees=assigneeNames();
   const opts=assignees.map(t=>`<option>${esc(t)}</option>`).join('');
   ['caseAssignee','newActionOwner'].forEach(id=>{ if($(id)) $(id).innerHTML = (id==='caseAssignee'?'<option value="">Unassigned</option>':'')+opts; });
   $('studentList').innerHTML = DB.students.map(s=>`<option value="${esc(s.name)}">${esc(s.year)} · ${esc(s.form)}</option>`).join('');
@@ -1323,11 +1334,17 @@ function openCase(id){
     <button onclick="closeModal('caseModal')" class="w-9 h-9 grid place-items-center rounded-full hover:bg-dim text-slate-500 shrink-0"><i data-lucide="x" class="w-5 h-5"></i></button>`;
   $('caseDesc').textContent=c.description;
   // body map
-  if((c.bodyMap||[]).length){ $('caseBodyMapWrap').classList.remove('hidden'); buildBodyMap($('caseBodyMap'),c.bodyMap,false);
-    $('caseBodyMap').insertAdjacentHTML('afterend', `<div class="mt-2 space-y-1">${c.bodyMap.map((m,i)=>`<div class="text-[11px] text-slate-500 font-medium"><strong class="text-crit">${i+1}.</strong> ${esc(m.note||'Marked')}</div>`).join('')}</div>`);
-  } else $('caseBodyMapWrap').classList.add('hidden');
+  if((c.bodyMap||[]).length){
+    $('caseBodyMapWrap').classList.remove('hidden');
+    buildBodyMap($('caseBodyMap'),c.bodyMap,false);
+    $('caseBodyMapNotes').innerHTML = c.bodyMap.map((m,i)=>`<div class="text-[11px] text-slate-500 font-medium"><strong class="text-crit">${i+1}.</strong> ${esc(m.note||'Marked')}</div>`).join('');
+  } else {
+    $('caseBodyMapWrap').classList.add('hidden');
+    $('caseBodyMap').innerHTML='';
+    $('caseBodyMapNotes').innerHTML='';
+  }
   $('caseStatus').value=c.status;
-  const assignees=[...new Set((APP_USERS.length ? APP_USERS : TEAM).filter(Boolean))];
+  const assignees=assigneeNames();
   $('caseAssignee').innerHTML='<option value="">Unassigned</option>'+assignees.map(t=>`<option ${t===c.assignee?'selected':''}>${esc(t)}</option>`).join('');
   // agencies
   $('caseAgencies').innerHTML = Object.entries(AGENCIES).map(([key,a])=>{ const on=(c.agencies||[]).includes(key);
@@ -1821,7 +1838,7 @@ function doPost(e){
 function copyScript(){ navigator.clipboard?.writeText(APPSCRIPT).then(()=>toast('Apps Script copied')); }
 
 // ---------- AUTH — ACCESS CODE LOGIN ----------
-const IS_TEACHER = ()=> ME.role==='Teacher' || ME.role==='Pastoral Lead';
+const IS_TEACHER = ()=> ME.role==='Teacher' || ME.role==='Pastoral Lead' || ME.role==='SENDCO';
 const IS_ADMIN   = ()=> ME.role==='Lead DSL' || ME.role==='Senior Leadership';
 const IS_SERVER  = ()=> window.location.protocol !== 'file:';
 const IS_LOCALHOST = ()=> ['localhost','127.0.0.1'].includes(window.location.hostname);
@@ -2190,7 +2207,7 @@ async function renderUsers(){
     const users=data.users;
     APP_USERS = users.map(u => `${u.firstName} ${u.lastName}`.trim()).filter(Boolean);
     if(!users.length){ el.innerHTML=emptyState('users','No users yet','Create the first user to give them access to the platform.'); return; }
-    const roleColor={'Lead DSL':'crit','Senior Leadership':'crit','Deputy DSL':'high','Pastoral Lead':'med','Teacher':'low'};
+    const roleColor={'Lead DSL':'crit','Senior Leadership':'crit','Deputy DSL':'high','SENDCO':'med','Pastoral Lead':'med','Teacher':'low'};
     el.innerHTML=users.map(u=>{
       const full=`${esc(u.firstName)} ${esc(u.lastName)}`;
       const rc=roleColor[u.role]||'low';
@@ -2220,7 +2237,7 @@ async function renderUsers(){
     if(!local.length){ el.innerHTML=emptyState('wifi-off','Server not available','No local users found. Start the server with  node server.js  to manage users.'); }
     else {
       const users = local;
-      const roleColor={'Lead DSL':'crit','Senior Leadership':'crit','Deputy DSL':'high','Pastoral Lead':'med','Teacher':'low'};
+      const roleColor={'Lead DSL':'crit','Senior Leadership':'crit','Deputy DSL':'high','SENDCO':'med','Pastoral Lead':'med','Teacher':'low'};
       el.innerHTML=users.map(u=>{
         const full=`${esc(u.firstName)} ${esc(u.lastName)}`;
         const rc=roleColor[u.role]||'low';
