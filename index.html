@@ -520,7 +520,7 @@ tailwind.config = {
           <select id="caseStatus" onchange="changeStatus()" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-bold">
             <option>New</option><option>In progress</option><option>Monitoring</option><option>Referred</option><option>Resolved</option></select></div>
           <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Assigned to</h4>
-          <select id="caseAssignee" multiple onchange="changeAssignee()" class="w-full min-h-[100px] px-3 py-2 rounded-xl bg-dim border border-transparent text-sm font-bold"></select></div>
+          <div id="caseAssignee" class="space-y-1.5"></div></div>
           <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Multi-agency referrals</h4>
             <div class="space-y-2" id="caseAgencies"></div>
           </div>
@@ -1402,7 +1402,7 @@ function closeReportModal(){
 function populateSelects(){
   const assignees=assigneeNames();
   const opts=assignees.map(t=>`<option>${esc(t)}</option>`).join('');
-  ['caseAssignee','newActionOwner'].forEach(id=>{ if($(id)) $(id).innerHTML = (id==='caseAssignee'?'<option value="">Unassigned</option>':'')+opts; });
+  if($('newActionOwner')) $('newActionOwner').innerHTML = opts;
   $('studentList').innerHTML = DB.students.map(s=>`<option value="${esc(s.name)}">${esc(s.year)} · ${esc(s.form)}</option>`).join('');
   const catFilter=$('conCategory');
   if(catFilter) catFilter.innerHTML = '<option value="All">All categories</option>'+Object.keys(CATEGORIES).map(c=>`<option>${c}</option>`).join('');
@@ -1529,11 +1529,8 @@ function openCase(id){
     $('caseBodyMapNotes').innerHTML='';
   }
   $('caseStatus').value=c.status;
-  const assignees=assigneeNames();
-  const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(s=>s.trim()).filter(Boolean);
-  $('caseAssignee').innerHTML='<option value="">Unassigned</option>'+assignees.map(t=>`<option ${assigneeList.includes(t)?'selected':''}>${esc(t)}</option>`).join('');
+  renderCaseAssignee(c);
   const isDSL = ME.role==='Lead DSL' || ME.role==='Senior Leadership';
-  $('caseAssignee').disabled = !isDSL;
   $('caseStatus').disabled = !isDSL;
   // agencies
   $('caseAgencies').innerHTML = Object.entries(AGENCIES).map(([key,a])=>{ const on=(c.agencies||[]).includes(key);
@@ -1571,21 +1568,35 @@ function changeStatus(){ const c=DB.cases.find(x=>x.id===activeCaseId); const v=
   c.status=v; c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'status',text:`Status changed to ${v}.`});
   logAudit('Status updated', `${c.studentName} → ${v}`); if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
   persist(); renderCaseTimeline(c); renderAll(); toast('Status updated'); }
-function changeAssignee(){
+function renderCaseAssignee(c){
+  const assignees=assigneeNames();
+  const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const isDSL = ME.role==='Lead DSL' || ME.role==='Senior Leadership';
+  $('caseAssignee').innerHTML = assignees.length ? assignees.map(t=>{
+    const on = assigneeList.includes(t);
+    const safe = t.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return `<button type="button" ${isDSL?`onclick="toggleAssignee('${safe}')"`:'disabled'} class="w-full flex items-center justify-between px-3 h-10 rounded-xl border-2 ${on?'border-brand bg-brandSoft':'border-line bg-card'} transition-colors ${isDSL?'':'opacity-70 cursor-default'}">
+      <span class="text-xs font-bold ${on?'text-brandDark':'text-slate-600'}">${esc(t)}</span>
+      <i data-lucide="${on?'check':'plus'}" class="w-4 h-4 ${on?'text-brandDark':'text-slate-300'}"></i></button>`;
+  }).join('') : '<p class="text-xs text-slate-400 font-medium italic">No users available to assign.</p>';
+  icons();
+}
+function toggleAssignee(name){
   const isDSL = ME.role==='Lead DSL' || ME.role==='Senior Leadership';
   if(!isDSL) { toast('Only DSL can assign cases','warning'); return; }
   const c=DB.cases.find(x=>x.id===activeCaseId);
-  const selectedOptions = Array.from($('caseAssignee').selectedOptions).map(opt => opt.value).filter(Boolean);
-  c.assignee = selectedOptions.length ? selectedOptions.join(',') : '';
-  const assigneeText = selectedOptions.length ? `Assigned to ${selectedOptions.join(', ')}.` : 'Unassigned.';
+  const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const idx = assigneeList.indexOf(name);
+  const added = idx<0;
+  if(added) assigneeList.push(name); else assigneeList.splice(idx,1);
+  c.assignee = assigneeList.join(',');
+  const assigneeText = assigneeList.length ? `Assigned to ${assigneeList.join(', ')}.` : 'Unassigned.';
   c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'note',text:assigneeText});
   logAudit('Case reassigned', `${c.studentName} → ${c.assignee||'Unassigned'}`);
   if(SOURCE==='live'&&SCRIPT_URL){ postLive({action:'syncCase',payload:c});
-    if(selectedOptions.length) selectedOptions.forEach(assignee => {
-      CAN_USE_APPS_SCRIPT() && scriptGet('notifyAssignee',{assignee:assignee,caseId:c.id,studentName:c.studentName,category:c.category,notifier:ME.name}).catch(()=>{});
-    });
+    if(added && CAN_USE_APPS_SCRIPT()) scriptGet('notifyAssignee',{assignee:name,caseId:c.id,studentName:c.studentName,category:c.category,notifier:ME.name}).catch(()=>{});
   }
-  persist(); renderCaseTimeline(c); renderAll(); toast('Assignee updated — notifications sent'); }
+  persist(); renderCaseAssignee(c); renderCaseTimeline(c); renderAll(); toast(added?'Assignee added — notification sent':'Assignee removed'); }
 function toggleAgency(key){ const c=DB.cases.find(x=>x.id===activeCaseId); c.agencies=c.agencies||[];
   const i=c.agencies.indexOf(key);
   if(i>-1){ c.agencies.splice(i,1); c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'agency',text:`Removed referral: ${AGENCIES[key].label}.`}); logAudit('Agency referral removed',`${c.studentName} · ${AGENCIES[key].label}`); }
