@@ -1118,7 +1118,10 @@ function go(view){
     const on=b.dataset.mnav===view;
     b.className=`mnav flex flex-col items-center justify-center gap-1 text-[10px] ${on?'font-bold text-brand':'font-semibold text-slate-400'}`;
   });
-  const [t,s]=VIEW_META[view]; $('viewTitle').textContent=t; $('viewSub').textContent=s;
+  const meta = VIEW_META[view] || ['View',''];
+  const [t,s] = meta;
+  $('viewTitle').textContent=t; 
+  $('viewSub').textContent=s;
   window.scrollTo(0,0);
   if(view==='analytics') renderAnalytics();
   if(view==='audit') renderAudit();
