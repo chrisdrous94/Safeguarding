@@ -2147,7 +2147,7 @@ function exportSendReportCSV(){
   rows.push(['Next Month Priorities', SEND_REPORT.summary.priorities || '—']);
   
   // Convert to CSV
-  const csv = rows.map(r=>r.map(cell=>'"'+(String(cell||'').replace(/"/g,'""'))+"').join(',')).join('\n');
+  const csv = rows.map(r=>r.map(cell=>'"'+(String(cell||'').replace(/"/g,'""'))+'"').join(',')).join('\n');
   
   // Download
   const link = document.createElement('a');
