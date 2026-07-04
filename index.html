@@ -919,6 +919,15 @@ let reportBodyMap = [];
 let APP_USERS = [];
 let PUBLIC_REPORT_MODE = false;
 
+// ---------- AUTH helpers (must be before go() function) ----------
+const IS_TEACHER = ()=> ME.role==='Teacher' || ME.role==='Pastoral Lead' || ME.role==='SENDCO';
+const IS_ADMIN   = ()=> ME.role==='Lead DSL' || ME.role==='Senior Leadership' || ME.role==='Principal';
+const IS_DSL_OR_PRINCIPAL = ()=> ME.role==='Lead DSL' || ME.role==='Deputy DSL' || ME.role==='Principal';
+const IS_SERVER  = ()=> window.location.protocol !== 'file:';
+const IS_LOCALHOST = ()=> ['localhost','127.0.0.1'].includes(window.location.hostname);
+const USE_NODE_API = ()=> !!getApiBase() || IS_LOCALHOST();
+const CAN_USE_APPS_SCRIPT = ()=> SOURCE==='live' && !!SCRIPT_URL;
+
 // ---------- tiny helpers ----------
 const $ = id => document.getElementById(id);
 const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -2629,13 +2638,6 @@ function doPost(e){
 function copyScript(){ navigator.clipboard?.writeText(APPSCRIPT).then(()=>toast('Apps Script copied')); }
 
 // ---------- AUTH — ACCESS CODE LOGIN ----------
-const IS_TEACHER = ()=> ME.role==='Teacher' || ME.role==='Pastoral Lead' || ME.role==='SENDCO';
-const IS_ADMIN   = ()=> ME.role==='Lead DSL' || ME.role==='Senior Leadership' || ME.role==='Principal';
-const IS_DSL_OR_PRINCIPAL = ()=> ME.role==='Lead DSL' || ME.role==='Deputy DSL' || ME.role==='Principal';
-const IS_SERVER  = ()=> window.location.protocol !== 'file:';
-const IS_LOCALHOST = ()=> ['localhost','127.0.0.1'].includes(window.location.hostname);
-const USE_NODE_API = ()=> !!getApiBase() || IS_LOCALHOST();
-const CAN_USE_APPS_SCRIPT = ()=> SOURCE==='live' && !!SCRIPT_URL;
 
 async function scriptGet(action, params={}){
   if(!CAN_USE_APPS_SCRIPT()) throw new Error('Apps Script URL not configured');
