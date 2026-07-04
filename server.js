@@ -25,7 +25,7 @@ app.use(express.json({ limit: '10kb' }));
 app.use(express.static(path.join(__dirname)));
 
 // ── Validation & Constants ───────────────────────────────────────────────────
-const VALID_ROLES = ['Teacher','Pastoral Lead','Deputy DSL','Lead DSL','Senior Leadership'];
+const VALID_ROLES = ['Teacher','Pastoral Lead','Deputy DSL','Lead DSL','Senior Leadership','Principal'];
 const CODE_MIN_LENGTH = 6;
 const CODE_MAX_LENGTH = 24;
 const NAME_MAX_LENGTH = 100;
@@ -105,7 +105,7 @@ function requireAdmin(req, res, next) {
     });
   }
 
-  if (!['Lead DSL', 'Senior Leadership'].includes(user.role)) {
+  if (!['Lead DSL', 'Senior Leadership', 'Principal'].includes(user.role)) {
     return res.status(403).json({
       ok: false,
       error: 'Insufficient permissions for this operation'
