@@ -377,7 +377,9 @@ tailwind.config = {
       <div class="h-11 px-4 rounded-2xl bg-dim border border-line flex items-center gap-2 text-sm font-bold text-slate-600">
         <i data-lucide="calendar" class="w-4 h-4 text-brand"></i><span id="srMonthLabel">—</span>
       </div>
-      <button onclick="openSendReportEdit()" class="h-11 px-4 rounded-2xl bg-brand hover:bg-brandDark text-white text-sm font-bold flex items-center gap-2 shadow-soft"><i data-lucide="pencil" class="w-4 h-4"></i><span class="hidden sm:inline">Edit monthly figures</span></button>
+      <button onclick="exportSendReportPDF()" title="Export as PDF" class="h-11 px-3 rounded-2xl bg-card border border-line hover:bg-dim text-slate-600 text-sm font-bold flex items-center gap-1.5 shadow-soft transition-colors"><i data-lucide="file-pdf" class="w-4 h-4"></i><span class="hidden sm:inline">PDF</span></button>
+      <button onclick="exportSendReportCSV()" title="Export as CSV" class="h-11 px-3 rounded-2xl bg-card border border-line hover:bg-dim text-slate-600 text-sm font-bold flex items-center gap-1.5 shadow-soft transition-colors"><i data-lucide="download" class="w-4 h-4"></i><span class="hidden sm:inline">CSV</span></button>
+      <button onclick="openSendReportEdit()" class="h-11 px-4 rounded-2xl bg-brand hover:bg-brandDark text-white text-sm font-bold flex items-center gap-2 shadow-soft"><i data-lucide="pencil" class="w-4 h-4"></i><span class="hidden sm:inline">Edit</span></button>
     </div>
   </div>
 
@@ -1086,6 +1088,18 @@ const VIEW_META = {
   'send-report':['SEND & Safeguarding Dashboard','Whole-school monthly overview for Principal & DSL']
 };
 function go(view){
+  // Permission checks
+  if(view==='send-report' && !IS_DSL_OR_PRINCIPAL()){
+    toast('You do not have permission to view this report');
+    go('dashboard');
+    return;
+  }
+  if(view==='users' && !IS_ADMIN()){
+    toast('You do not have permission to manage users');
+    go('dashboard');
+    return;
+  }
+  
   document.querySelectorAll('[data-view]').forEach(s=> s.classList.toggle('hidden', s.dataset.view!==view));
   document.querySelectorAll('.nav-btn').forEach(b=>{
     const on=b.dataset.nav===view; b.classList.toggle('nav-active',on);
@@ -2061,6 +2075,189 @@ function renderSendReport(){
   icons();
 }
 
+function exportSendReportCSV(){
+  if(!SEND_REPORT) SEND_REPORT = loadSendReportData();
+  const rows = [];
+  rows.push(['I CAN School - SEND & Safeguarding Whole School Report']);
+  rows.push(['Generated:', new Date().toLocaleString()]);
+  rows.push([]);
+  rows.push(['Month:', SEND_REPORT.month]);
+  rows.push(['Reported by:', ME.firstName + ' ' + ME.lastName + ' (' + ME.role + ')']);
+  rows.push([]);
+  
+  // Overview
+  rows.push(['SECTION 1: OVERVIEW SUMMARY']);
+  rows.push(['Area of Focus', 'Primary', 'Secondary', 'Total']);
+  const manualRows = SR_OVERVIEW_FIELDS.map(f=>{
+    const v = SEND_REPORT.overview[f.key] || {primary:0,secondary:0};
+    return [f.label, v.primary||0, v.secondary||0, (v.primary||0)+(v.secondary||0)];
+  });
+  manualRows.forEach(r=>rows.push(r));
+  const overviewLive = overviewLiveRows();
+  overviewLive.forEach(r=>rows.push([r.label, r.primary, r.secondary, r.total]));
+  rows.push([]);
+  
+  // Referrals
+  rows.push(['SECTION 2: REFERRAL OVERVIEW']);
+  rows.push(['Referral Source', 'Count']);
+  SR_REFERRAL_SOURCES.forEach(s=>rows.push([s.label, SEND_REPORT.referrals[s.key]||0]));
+  rows.push([]);
+  
+  // SEND Needs
+  rows.push(['SECTION 3: SEND NEEDS PROFILE']);
+  rows.push(['Area of Need', 'Count']);
+  SR_NEEDS_PROFILE.forEach(n=>rows.push([n.label, SEND_REPORT.needs[n.key]||0]));
+  rows.push([]);
+  
+  // Safeguarding Categories
+  rows.push(['SECTION 4: SAFEGUARDING CONCERNS BY CATEGORY']);
+  rows.push(['Category', 'Count']);
+  const { counts, other, total } = safeguardingCategorySplit();
+  SR_CATEGORY_BUCKETS.forEach(b=>rows.push([b.label, counts[b.key]]));
+  rows.push(['Other', other]);
+  rows.push(['Total Open Concerns', total]);
+  rows.push([]);
+  
+  // Key Statistics
+  rows.push(['SECTION 6: KEY STATISTICS']);
+  rows.push(['Statistic', 'Value']);
+  rows.push(['Avg. days referral to observation', SEND_REPORT.stats.avgReferralToObs || '—']);
+  rows.push(['Avg. days observation to parent meeting', SEND_REPORT.stats.avgObsToParent || '—']);
+  rows.push(['IEP reviews due this month', SEND_REPORT.stats.iepReviewsDue || '0']);
+  rows.push(['Cases requiring monitoring', visibleCases().filter(c=>c.status==='Monitoring').length]);
+  rows.push(['Staff referrals this month', visibleCases().filter(c=>monthKey(c.date)===thisMonthKey()).length]);
+  rows.push([]);
+  
+  // Principal Summary
+  rows.push(['SECTION 8: PRINCIPAL SUMMARY']);
+  rows.push(['Strengths', SEND_REPORT.summary.strengths || '—']);
+  rows.push(['Concerns', SEND_REPORT.summary.concerns || '—']);
+  rows.push(['Next Month Priorities', SEND_REPORT.summary.priorities || '—']);
+  
+  // Convert to CSV
+  const csv = rows.map(r=>r.map(cell=>'"'+(String(cell||'').replace(/"/g,'""'))+"').join(',')).join('\n');
+  
+  // Download
+  const link = document.createElement('a');
+  link.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  link.download = 'Whole-School-Report-'+(SEND_REPORT.month||'Export').replace(/\s+/g,'-')+'.csv';
+  link.click();
+  toast('Report exported as CSV');
+}
+
+function exportSendReportPDF(){
+  if(!SEND_REPORT) SEND_REPORT = loadSendReportData();
+  // Using print function as PDF export (browser's print to PDF)
+  const printWindow = window.open('', '', 'width=900,height=800');
+  const month = SEND_REPORT.month || new Date().toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  const { counts, other, total } = safeguardingCategorySplit();
+  
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Whole School Report - ${month}</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
+        h1 { color: #0d7a6f; border-bottom: 3px solid #0d7a6f; padding-bottom: 10px; }
+        h2 { color: #0a5b53; margin-top: 20px; font-size: 16px; }
+        table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background-color: #0d7a6f; color: white; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        .summary { background-color: #f0f9f8; padding: 15px; margin: 15px 0; border-left: 4px solid #0d7a6f; }
+        .meta { color: #666; font-size: 12px; margin-bottom: 20px; }
+        .footer { margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; color: #666; font-size: 11px; }
+      </style>
+    </head>
+    <body>
+      <h1>SEND & Safeguarding Whole School Report</h1>
+      <div class="meta">
+        <p><strong>Month:</strong> ${month}</p>
+        <p><strong>Reported by:</strong> ${ME.firstName} ${ME.lastName} (${ME.role})</p>
+        <p><strong>Generated:</strong> ${new Date().toLocaleString()}</p>
+      </div>
+      
+      <h2>1. Overview Summary</h2>
+      <table>
+        <tr><th>Area of Focus</th><th>Primary</th><th>Secondary</th><th>Total</th></tr>
+        ${SR_OVERVIEW_FIELDS.map(f=>{
+          const v = SEND_REPORT.overview[f.key] || {primary:0,secondary:0};
+          const total = (v.primary||0)+(v.secondary||0);
+          return `<tr><td>${f.label}</td><td>${v.primary||0}</td><td>${v.secondary||0}</td><td><strong>${total}</strong></td></tr>`;
+        }).join('')}
+        ${overviewLiveRows().map(r=>`<tr><td>${r.label}</td><td>${r.primary}</td><td>${r.secondary}</td><td><strong>${r.total}</strong></td></tr>`).join('')}
+      </table>
+      
+      <h2>2. Referral Overview</h2>
+      <table>
+        <tr><th>Referral Source</th><th>Count</th></tr>
+        ${SR_REFERRAL_SOURCES.map(s=>`<tr><td>${s.label}</td><td>${SEND_REPORT.referrals[s.key]||0}</td></tr>`).join('')}
+      </table>
+      
+      <h2>3. SEND Needs Profile</h2>
+      <table>
+        <tr><th>Area of Need</th><th>Count</th></tr>
+        ${SR_NEEDS_PROFILE.map(n=>`<tr><td>${n.label}</td><td>${SEND_REPORT.needs[n.key]||0}</td></tr>`).join('')}
+      </table>
+      
+      <h2>4. Safeguarding Concerns by Category</h2>
+      <table>
+        <tr><th>Category</th><th>Count</th></tr>
+        ${SR_CATEGORY_BUCKETS.map(b=>`<tr><td>${b.label}</td><td>${counts[b.key]}</td></tr>`).join('')}
+        <tr><td><strong>Other</strong></td><td><strong>${other}</strong></td></tr>
+        <tr><td><strong>Total Open Concerns</strong></td><td><strong>${total}</strong></td></tr>
+      </table>
+      
+      <h2>5. Actions Due This Month</h2>
+      ${actionsDueThisMonth().length > 0 ? `
+        <table>
+          <tr><th>Student</th><th>Action</th><th>Owner</th><th>Due Date</th><th>Status</th></tr>
+          ${actionsDueThisMonth().map(a=>{
+            const st = actionStatusInfo(a);
+            return `<tr><td>${a.student}</td><td>${a.text}</td><td>${a.owner||'—'}</td><td>${fmtShort(a.due)}</td><td>${st.label}</td></tr>`;
+          }).join('')}
+        </table>
+      ` : '<p>No actions due this month</p>'}
+      
+      <h2>6. Key Statistics</h2>
+      <table>
+        <tr><th>Statistic</th><th>Value</th></tr>
+        <tr><td>Avg. time referral to observation</td><td>${SEND_REPORT.stats.avgReferralToObs || '—'}</td></tr>
+        <tr><td>Avg. time observation to parent meeting</td><td>${SEND_REPORT.stats.avgObsToParent || '—'}</td></tr>
+        <tr><td>IEP reviews due this month</td><td>${SEND_REPORT.stats.iepReviewsDue || '0'}</td></tr>
+        <tr><td>Cases requiring monitoring</td><td>${visibleCases().filter(c=>c.status==='Monitoring').length}</td></tr>
+        <tr><td>Staff referrals this month</td><td>${visibleCases().filter(c=>monthKey(c.date)===thisMonthKey()).length}</td></tr>
+      </table>
+      
+      <h2>8. Principal Summary</h2>
+      <div class="summary">
+        <h3 style="color: #047857; margin-top: 0;">Strengths</h3>
+        <p>${SEND_REPORT.summary.strengths || 'Not set'}</p>
+      </div>
+      <div class="summary">
+        <h3 style="color: #b45309; margin-top: 0;">Concerns</h3>
+        <p>${SEND_REPORT.summary.concerns || 'Not set'}</p>
+      </div>
+      <div class="summary">
+        <h3 style="color: #1d4ed8; margin-top: 0;">Next Month Priorities</h3>
+        <p>${SEND_REPORT.summary.priorities || 'Not set'}</p>
+      </div>
+      
+      <div class="footer">
+        <p>This report is confidential and intended for safeguarding leadership only.</p>
+        <p>Generated by I CAN School Safeguarding Platform</p>
+      </div>
+    </body>
+    </html>
+  `;
+  
+  printWindow.document.write(html);
+  printWindow.document.close();
+  setTimeout(() => printWindow.print(), 500);
+  toast('Report opened for printing/PDF export');
+}
+
 function openSendReportEdit(){
   if(!SEND_REPORT) SEND_REPORT = loadSendReportData();
   const s = SEND_REPORT;
@@ -2434,6 +2631,7 @@ function copyScript(){ navigator.clipboard?.writeText(APPSCRIPT).then(()=>toast(
 // ---------- AUTH — ACCESS CODE LOGIN ----------
 const IS_TEACHER = ()=> ME.role==='Teacher' || ME.role==='Pastoral Lead' || ME.role==='SENDCO';
 const IS_ADMIN   = ()=> ME.role==='Lead DSL' || ME.role==='Senior Leadership' || ME.role==='Principal';
+const IS_DSL_OR_PRINCIPAL = ()=> ME.role==='Lead DSL' || ME.role==='Deputy DSL' || ME.role==='Principal';
 const IS_SERVER  = ()=> window.location.protocol !== 'file:';
 const IS_LOCALHOST = ()=> ['localhost','127.0.0.1'].includes(window.location.hostname);
 const USE_NODE_API = ()=> !!getApiBase() || IS_LOCALHOST();
@@ -2686,11 +2884,16 @@ function signOut(){
 function applyRoleLayout(){
   const teacher=IS_TEACHER();
   const admin=IS_ADMIN();
+  const dslOrPrincipal=IS_DSL_OR_PRINCIPAL();
   const sidebar=document.querySelector('aside');
   // Show sidebar to everyone — role-based menu visibility is handled by .admin-nav
   if(sidebar){ sidebar.classList.add('md:flex'); sidebar.classList.remove('hidden'); }
   $('mobileBottomNav')?.classList.remove('hidden');
   document.querySelectorAll('.admin-nav').forEach(el=>el.classList.toggle('hidden',!admin));
+  
+  // Show whole school report only to DSL and Principal (not Senior Leadership)
+  const sendReportBtn = document.querySelector('[data-nav="send-report"]');
+  if(sendReportBtn) sendReportBtn.classList.toggle('hidden', !dslOrPrincipal);
 }
 
 // ---------- USER MANAGEMENT (admin) ----------
