@@ -427,7 +427,7 @@ tailwind.config = {
     <!-- 3. SEND needs profile -->
     <div class="bg-card rounded-4xl border border-line shadow-soft p-5 sm:p-6">
       <h3 class="font-display font-bold text-base text-ink mb-1">3. SEND Needs Profile</h3>
-      <p class="text-xs text-slate-400 font-medium mb-4">Students by primary area of need</p>
+      <p class="text-xs text-slate-400 font-medium mb-4">Live — students by primary area of need, from the SEND case log</p>
       <div id="srNeedsBars" class="space-y-3"></div>
       <div class="mt-4 pt-3 border-t border-line flex items-center justify-between text-xs font-bold text-slate-500">
         <span>Total students with SEND needs</span><span id="srNeedsTotal" class="text-ink text-base">0</span>
@@ -851,8 +851,8 @@ tailwind.config = {
       <div>
         <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Student</label>
         <div class="relative"><i data-lucide="user-search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
-        <input id="scStudent" list="studentList" placeholder="Start typing a name…" class="w-full h-12 pl-11 pr-4 rounded-2xl bg-card border border-line text-sm font-semibold"></div>
-        <p class="text-[11px] text-slate-400 mt-1.5 font-medium">New name? It will be added to the register automatically.</p>
+        <input id="scStudent" list="studentList" oninput="prefillSendCaseFields()" placeholder="Start typing a name…" class="w-full h-12 pl-11 pr-4 rounded-2xl bg-card border border-line text-sm font-semibold"></div>
+        <p class="text-[11px] text-slate-400 mt-1.5 font-medium">New name? It will be added to the register automatically. Existing SEND details are pre-filled for names already on the register.</p>
       </div>
       <div>
         <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Department</label>
@@ -865,6 +865,13 @@ tailwind.config = {
         <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">SEND status</label>
         <div id="scStatusGrid" class="grid grid-cols-1 gap-2"></div>
         <input type="hidden" id="scStatus">
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Primary area of need</label>
+        <select id="scNeedArea" class="w-full h-12 px-4 rounded-2xl bg-card border border-line text-sm font-semibold text-slate-700">
+          <option value="">Not specified</option>
+        </select>
+        <p class="text-[11px] text-slate-400 mt-1.5 font-medium">Feeds the SEND Needs Profile chart automatically.</p>
       </div>
       <div>
         <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Notes (optional)</label>
@@ -1223,15 +1230,24 @@ function go(view){
   $('viewTitle').textContent=t; 
   $('viewSub').textContent=s;
   window.scrollTo(0,0);
-  if(view==='analytics') renderAnalytics();
-  if(view==='audit') renderAudit();
-  if(view==='students') renderStudents();
-  if(view==='tasks') renderTasks();
-  if(view==='concerns') renderConcerns();
-  if(view==='teacher-home') renderTeacherHome();
-  if(view==='users') renderUsers();
-  if(view==='send-report') renderSendReport();
+  renderCurrentView();
   icons();
+}
+// Renders whichever view is on screen. Used on navigation and after any data
+// mutation — rebuilding every view on every mutation (the old renderAll()
+// behaviour) got noticeably slower as the case/student lists grew, since it
+// rebuilt hidden DOM (and recreated Chart.js charts) nobody was looking at.
+function renderCurrentView(){
+  const view = CURRENT_VIEW;
+  if(view==='dashboard') renderDashboard();
+  else if(view==='analytics') renderAnalytics();
+  else if(view==='audit') renderAudit();
+  else if(view==='students') renderStudents();
+  else if(view==='tasks') renderTasks();
+  else if(view==='concerns') renderConcerns();
+  else if(view==='teacher-home') renderTeacherHome();
+  else if(view==='users') renderUsers();
+  else if(view==='send-report') renderSendReport();
 }
 
 // ---------- Settings / source ----------
@@ -1380,9 +1396,7 @@ function avatar(name,size='w-10 h-10',risk){
 }
 
 function renderAll(){
-  updateCounts(); renderDashboard(); renderConcerns(); renderStudents(); renderTasks();
-  if(IS_TEACHER()) renderTeacherHome();
-  populateSelects(); icons();
+  updateCounts(); renderCurrentView(); populateSelects(); icons();
 }
 function renderTeacherHome(){
   const mine=visibleCases().sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,12);
@@ -1838,7 +1852,8 @@ async function setCaseSendStatus(status){
   const existing = SEND_CASES_LIST.find(x=>x.studentId===c.studentId);
   const payload = {
     id: existing?.id, studentId:c.studentId, studentName:c.studentName,
-    department: c.department || 'Primary', status, notes: existing?.notes || ''
+    department: c.department || 'Primary', status,
+    needArea: existing?.needArea || '', notes: existing?.notes || ''
   };
   try{
     const res = await scriptGet('saveSendCase', { adminCode: ME.code, payload: JSON.stringify(payload) });
@@ -2175,24 +2190,56 @@ function computeSendOverviewLive(){
   counts.sendRegister = { primary: register.primary.size, secondary: register.secondary.size };
   return counts;
 }
-// Overwrites the live-computed keys on SEND_REPORT.overview in place, so every
-// consumer (report table, CSV/PDF export, edit modal) stays in sync automatically.
+// One student can only carry one primary area of need, so this counts each
+// studentId once per area rather than once per logged row.
+function computeSendNeedsProfileLive(){
+  const sets = {}; SR_NEEDS_PROFILE.forEach(n=>{ sets[n.key] = new Set(); });
+  SEND_CASES_LIST.forEach(c=>{
+    if(c.needArea && sets[c.needArea] && c.studentId) sets[c.needArea].add(c.studentId);
+  });
+  const out = {}; SR_NEEDS_PROFILE.forEach(n=>{ out[n.key] = sets[n.key].size; });
+  return out;
+}
+// Overwrites the live-computed keys on SEND_REPORT.overview/needs in place, so
+// every consumer (report table, CSV/PDF export, edit modal) stays in sync automatically.
 async function applyLiveSendOverview(force){
   await loadSendCasesData(force);
   const live = computeSendOverviewLive();
   Object.keys(live).forEach(k=>{ SEND_REPORT.overview[k] = live[k]; });
+  const needsLive = computeSendNeedsProfileLive();
+  Object.keys(needsLive).forEach(k=>{ SEND_REPORT.needs[k] = needsLive[k]; });
 }
 function sendStatusLabel(key){
   return (SEND_CASE_STATUSES.find(f=>f.key===key)||{}).label || key;
 }
-function openSendCaseModal(prefillName){
+function findSendCaseByStudentName(name){
+  const n = (name||'').trim().toLowerCase();
+  if(!n) return null;
+  return SEND_CASES_LIST.find(x=>(x.studentName||'').toLowerCase()===n) || null;
+}
+// Pre-fills department/status/need area/notes when the typed name already has
+// a SEND case logged, so re-opening the form to update someone edits in place
+// instead of risking a duplicate register entry.
+function prefillSendCaseFields(){
+  const entry = findSendCaseByStudentName($('scStudent').value);
+  if(!entry) return;
+  $('scDepartment').value = entry.department || 'Primary';
+  $('scNeedArea').value = entry.needArea || '';
+  $('scNotes').value = entry.notes || '';
+  pickSendStatus(entry.status);
+}
+async function openSendCaseModal(prefillName){
   if(!CAN_LOG_SEND()){ toast('Only SENDCO, DSL and Principal can log SEND cases','warning'); return; }
+  await loadSendCasesData();
   $('scStudent').value = prefillName || '';
   $('scDepartment').value = 'Primary';
+  $('scNeedArea').innerHTML = '<option value="">Not specified</option>' + SR_NEEDS_PROFILE.map(n=>`<option value="${n.key}">${esc(n.label)}</option>`).join('');
+  $('scNeedArea').value = '';
   $('scNotes').value = '';
   $('scStatus').value = '';
   $('scStatusGrid').innerHTML = SEND_CASE_STATUSES.map(f=>`
     <button type="button" data-status="${f.key}" onclick="pickSendStatus('${f.key}')" class="scstatus text-left px-4 h-12 rounded-2xl border-2 border-line bg-card text-sm font-bold text-slate-700 hover:border-brand/40 hover:bg-dim/40 transition-colors">${esc(f.label)}</button>`).join('');
+  prefillSendCaseFields();
   openModal('sendCaseModal'); icons();
 }
 function pickSendStatus(key){
@@ -2211,10 +2258,15 @@ async function submitSendCase(){
   let s = DB.students.find(x=>x.name.toLowerCase()===name.toLowerCase());
   const studentId = s ? s.id : uid('s_');
   if(!s){ s={id:studentId, name, year:'Unknown', form:'—', keyAdult:ME.name, flags:[]}; DB.students.push(s); persist(); }
+  // Reuse the existing register row's id so re-logging the same student updates
+  // it in place rather than creating a duplicate that double-counts the report.
+  const existing = SEND_CASES_LIST.find(x=>x.studentId===studentId) || findSendCaseByStudentName(name);
   const payload = {
+    id: existing?.id,
     studentId, studentName:name,
     department: $('scDepartment').value || 'Primary',
-    status, notes: $('scNotes').value.trim()
+    status, needArea: $('scNeedArea').value || '',
+    notes: $('scNotes').value.trim()
   };
   try{
     const res = await scriptGet('saveSendCase', { adminCode: ME.code, payload: JSON.stringify(payload) });
@@ -2628,7 +2680,7 @@ async function openSendReportEdit(){
   </div>`).join('');
   const needRows = SR_NEEDS_PROFILE.map(n=>`<div>
     <label class="block text-xs font-bold text-slate-600 mb-1">${esc(n.label)}</label>
-    <input type="number" min="0" id="sr_need_${n.key}" value="${Number(s.needs[n.key])||0}" class="w-full h-10 px-3 rounded-xl bg-dim border border-transparent text-sm font-semibold">
+    <div class="h-10 px-3 rounded-xl bg-dim/60 flex items-center text-sm font-semibold text-slate-500">${Number(s.needs[n.key])||0}</div>
   </div>`).join('');
   $('sendReportForm').innerHTML = `
     <div class="bg-card rounded-2xl border border-line p-4 space-y-1.5">
@@ -2648,6 +2700,7 @@ async function openSendReportEdit(){
     <div class="bg-card rounded-2xl border border-line p-4 space-y-3">
       <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">SEND needs profile</h4>
       <div class="grid grid-cols-2 gap-3">${needRows}</div>
+      <p class="text-[11px] text-slate-400 font-medium">Calculated automatically from the primary area of need set when logging each SEND case and don't need entering here.</p>
     </div>
     <div class="bg-card rounded-2xl border border-line p-4 space-y-3">
       <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Key statistics</h4>
@@ -2677,7 +2730,7 @@ async function saveSendReportEdit(){
     };
   });
   SR_REFERRAL_SOURCES.forEach(r=>{ s.referrals[r.key] = Math.max(0, Number($(`sr_ref_${r.key}`).value)||0); });
-  SR_NEEDS_PROFILE.forEach(n=>{ s.needs[n.key] = Math.max(0, Number($(`sr_need_${n.key}`).value)||0); });
+  // needs profile is calculated live from the SEND case log — nothing to read from inputs
   s.stats.avgReferralToObs = $('sr_stat_avgReferralToObs').value.trim();
   s.stats.avgObsToParent = $('sr_stat_avgObsToParent').value.trim();
   s.stats.iepReviewsDue = $('sr_stat_iepReviewsDue').value.trim();

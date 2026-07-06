@@ -179,7 +179,7 @@ function requireSendCaseAccess(code){
 }
 
 function sendCaseHeaders(){
-  return ['id','studentId','studentName','department','status','notes','loggedBy','loggedAt','updatedAt'];
+  return ['id','studentId','studentName','department','status','needArea','notes','loggedBy','loggedAt','updatedAt'];
 }
 
 function ensureSendCasesSheet(){
@@ -202,10 +202,11 @@ function getSendCases(code){
       studentName: row[2] || '',
       department: row[3] || '',
       status: row[4] || '',
-      notes: row[5] || '',
-      loggedBy: row[6] || '',
-      loggedAt: row[7] || '',
-      updatedAt: row[8] || ''
+      needArea: row[5] || '',
+      notes: row[6] || '',
+      loggedBy: row[7] || '',
+      loggedAt: row[8] || '',
+      updatedAt: row[9] || ''
     });
   }
   return { ok:true, data:list };
@@ -233,6 +234,7 @@ function saveSendCase(code, payloadJson){
     studentName,
     norm(p.department),
     status,
+    norm(p.needArea) || (idx>=0 ? (list[idx].needArea || '') : ''),
     norm(p.notes),
     idx>=0 ? (list[idx].loggedBy || loggedByName) : loggedByName,
     idx>=0 ? (list[idx].loggedAt || now) : now,
