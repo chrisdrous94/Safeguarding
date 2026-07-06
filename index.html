@@ -351,6 +351,13 @@ tailwind.config = {
         <p class="text-[11px] text-slate-400 font-medium mt-0.5">What was seen or heard — no opinion</p>
       </div>
     </div>
+    <div id="sendCaseHomeCard" class="hidden bg-card rounded-4xl border border-line shadow-soft p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div>
+        <h3 class="font-display font-bold text-base text-ink">Log a SEND case</h3>
+        <p class="text-xs text-slate-400 font-medium mt-0.5">Add a student to Under Observation, Intervention Plans, Formal IEP, External Assessment Pending or External Diagnoses Received — feeds the whole-school SEND report automatically</p>
+      </div>
+      <button onclick="openSendCaseModal()" class="h-11 px-5 rounded-full bg-brand hover:bg-brandDark text-white text-sm font-bold flex items-center gap-2 shadow-soft shrink-0"><i data-lucide="clipboard-plus" class="w-4 h-4"></i>Log SEND case</button>
+    </div>
     <div class="bg-card rounded-4xl border border-line shadow-soft p-5 sm:p-6">
       <h3 class="font-display font-bold text-base text-ink mb-1">Your recent submissions</h3>
       <p class="text-xs text-slate-400 font-medium mb-4">Concerns you have reported this term</p>
@@ -371,7 +378,7 @@ tailwind.config = {
   <div class="bg-card rounded-4xl border border-line shadow-soft p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
     <div>
       <h2 class="font-display font-bold text-lg text-ink">SEND &amp; Safeguarding Whole School Dashboard</h2>
-      <p class="text-xs text-slate-400 font-medium mt-0.5">Safeguarding figures are live · SEND figures are entered monthly and shared with all DSL/Principal accounts · choose any month below</p>
+      <p class="text-xs text-slate-400 font-medium mt-0.5">Safeguarding figures are live · SEND register &amp; stage figures are calculated automatically from the SEND case log · choose any month below</p>
     </div>
     <div class="flex items-center gap-2 flex-wrap">
       <div class="h-11 px-3 rounded-2xl bg-dim border border-line flex items-center gap-2">
@@ -380,7 +387,8 @@ tailwind.config = {
       </div>
       <button onclick="exportSendReportPDF()" title="Export as PDF" class="h-11 px-3 rounded-2xl bg-card border border-line hover:bg-dim text-slate-600 text-sm font-bold flex items-center gap-1.5 shadow-soft transition-colors"><i data-lucide="file-pdf" class="w-4 h-4"></i><span class="hidden sm:inline">PDF</span></button>
       <button onclick="exportSendReportCSV()" title="Export as CSV" class="h-11 px-3 rounded-2xl bg-card border border-line hover:bg-dim text-slate-600 text-sm font-bold flex items-center gap-1.5 shadow-soft transition-colors"><i data-lucide="download" class="w-4 h-4"></i><span class="hidden sm:inline">CSV</span></button>
-      <button onclick="openSendReportEdit()" class="h-11 px-4 rounded-2xl bg-brand hover:bg-brandDark text-white text-sm font-bold flex items-center gap-2 shadow-soft"><i data-lucide="pencil" class="w-4 h-4"></i><span class="hidden sm:inline">Edit</span></button>
+      <button onclick="openSendCaseModal()" class="h-11 px-4 rounded-2xl bg-brand hover:bg-brandDark text-white text-sm font-bold flex items-center gap-2 shadow-soft"><i data-lucide="clipboard-plus" class="w-4 h-4"></i><span class="hidden sm:inline">Log SEND case</span></button>
+      <button onclick="openSendReportEdit()" class="h-11 px-4 rounded-2xl bg-card border border-line hover:bg-dim text-slate-600 text-sm font-bold flex items-center gap-2 shadow-soft"><i data-lucide="pencil" class="w-4 h-4"></i><span class="hidden sm:inline">Edit</span></button>
     </div>
   </div>
 
@@ -395,6 +403,15 @@ tailwind.config = {
         <tbody id="srOverviewBody"></tbody>
       </table>
     </div>
+  </div>
+
+  <!-- 1b. SEND case log -->
+  <div class="bg-card rounded-4xl border border-line shadow-soft overflow-hidden">
+    <div class="px-5 py-3 border-b border-line flex items-center justify-between gap-3">
+      <h3 class="font-display font-bold text-sm text-ink">SEND case log</h3>
+      <span class="text-[11px] font-semibold text-slate-400 hidden sm:inline">Logged by SENDCO/DSL/Principal — feeds the Overview Summary above automatically</span>
+    </div>
+    <div id="srCaseLogList" class="divide-y divide-line max-h-[340px] overflow-y-auto scroll-thin"></div>
   </div>
 
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -816,6 +833,48 @@ tailwind.config = {
   </div>
 </div>
 
+<!-- ===================== LOG SEND CASE MODAL ===================== -->
+<div id="sendCaseModal" onclick="if(event.target===this)closeModal('sendCaseModal')" class="fixed inset-0 z-[110] hidden bg-ink/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 transition-opacity">
+  <div class="bg-surface w-full sm:max-w-lg sm:rounded-5xl rounded-t-4xl shadow-lift max-h-[94vh] flex flex-col pop overflow-hidden">
+    <div class="px-5 sm:px-7 py-5 flex items-center justify-between border-b border-line bg-card">
+      <div class="flex items-center gap-3"><div class="w-10 h-10 rounded-2xl bg-brandSoft text-onBrandSoft grid place-items-center"><i data-lucide="clipboard-plus" class="w-5 h-5"></i></div>
+      <div><h3 class="font-display font-bold text-ink">Log SEND case</h3><p class="text-[11px] text-slate-400 font-medium">Feeds the whole-school SEND report automatically</p></div></div>
+      <button onclick="closeModal('sendCaseModal')" class="w-9 h-9 grid place-items-center rounded-full hover:bg-dim text-slate-500"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>
+    <div class="overflow-y-auto scroll-thin px-5 sm:px-7 py-5 space-y-4">
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Student</label>
+        <div class="relative"><i data-lucide="user-search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+        <input id="scStudent" list="studentList" placeholder="Start typing a name…" class="w-full h-12 pl-11 pr-4 rounded-2xl bg-card border border-line text-sm font-semibold"></div>
+        <p class="text-[11px] text-slate-400 mt-1.5 font-medium">New name? It will be added to the register automatically.</p>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Department</label>
+        <select id="scDepartment" class="w-full h-12 px-4 rounded-2xl bg-card border border-line text-sm font-semibold text-slate-700">
+          <option value="Primary">Primary</option>
+          <option value="Secondary">Secondary</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">SEND status</label>
+        <div id="scStatusGrid" class="grid grid-cols-1 gap-2"></div>
+        <input type="hidden" id="scStatus">
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Notes (optional)</label>
+        <textarea id="scNotes" rows="3" placeholder="Any context for the SENDCo/DSL team…" class="w-full px-4 py-3 rounded-2xl bg-card border border-line text-sm font-medium resize-none"></textarea>
+      </div>
+    </div>
+    <div class="px-5 sm:px-7 py-4 border-t border-line bg-card flex items-center justify-between gap-3">
+      <p class="text-[11px] text-slate-400 font-medium hidden sm:block">Visible to SENDCO, DSL and Principal.</p>
+      <div class="flex gap-2 w-full sm:w-auto">
+        <button onclick="closeModal('sendCaseModal')" class="flex-1 sm:flex-none h-12 px-5 rounded-full text-sm font-bold text-slate-600 hover:bg-dim">Cancel</button>
+        <button onclick="submitSendCase()" class="flex-1 sm:flex-none h-12 px-7 rounded-full bg-brand hover:bg-brandDark text-white text-sm font-bold shadow-soft flex items-center justify-center gap-2"><i data-lucide="send" class="w-4 h-4"></i>Log case</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ===================== ACCESS CODE REVEAL MODAL ===================== -->
 <div id="codeRevealModal" onclick="if(event.target===this)closeModal('codeRevealModal')" class="fixed inset-0 z-[120] hidden bg-ink/60 backdrop-blur-sm flex items-center justify-center p-4 opacity-0 transition-opacity">
   <div class="bg-surface w-full max-w-sm rounded-4xl shadow-lift p-7 pop text-center">
@@ -937,6 +996,7 @@ const TEAM = [];
 // ---------- App state ----------
 let DB = { students:[], cases:[], audit:[] };
 let ME = { name:'', role:'Teacher', userId:'', code:'' };
+let CURRENT_VIEW = 'dashboard';
 let SOURCE = 'live';
 let SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzUyMJIS4RI639eHS21JFba6ZnFjjvIp9bEEa4Qg9uhxc2R4zm4o6KYgwi_FM0e0SUonw/exec';
 let API_BASE_URL = '';
@@ -953,6 +1013,9 @@ let PUBLIC_REPORT_MODE = false;
 const IS_TEACHER = ()=> ME.role==='Teacher' || ME.role==='Pastoral Lead' || ME.role==='SENDCO';
 const IS_ADMIN   = ()=> ME.role==='Lead DSL' || ME.role==='Senior Leadership' || ME.role==='Principal';
 const IS_DSL_OR_PRINCIPAL = ()=> ME.role==='Lead DSL' || ME.role==='Deputy DSL' || ME.role==='Principal';
+// SENDCO can log SEND cases (feeding the whole-school report) without needing
+// full whole-school-report access, which stays restricted to DSL/Principal.
+const CAN_LOG_SEND = ()=> ME.role==='SENDCO' || ME.role==='Lead DSL' || ME.role==='Deputy DSL' || ME.role==='Principal';
 const IS_SERVER  = ()=> window.location.protocol !== 'file:';
 const IS_LOCALHOST = ()=> ['localhost','127.0.0.1'].includes(window.location.hostname);
 const USE_NODE_API = ()=> !!getApiBase() || IS_LOCALHOST();
@@ -1139,6 +1202,7 @@ function go(view){
     return;
   }
   
+  CURRENT_VIEW = view;
   document.querySelectorAll('[data-view]').forEach(s=> s.classList.toggle('hidden', s.dataset.view!==view));
   document.querySelectorAll('.nav-btn').forEach(b=>{
     const on=b.dataset.nav===view; b.classList.toggle('nav-active',on);
@@ -1944,6 +2008,11 @@ const SR_OVERVIEW_FIELDS = [
   { key:'extAssessPending',  label:'External Assessments Pending' },
   { key:'extDiagnoses',      label:'External Diagnoses Received' }
 ];
+// Statuses SENDCO/DSL/Principal can log an individual SEND case under.
+// Reuses the overview field labels so the case log and the report table agree.
+const SEND_CASE_STATUSES = SR_OVERVIEW_FIELDS.filter(f=> f.key!=='sendRegister' && f.key!=='newReferrals');
+// Overview rows calculated live from the SEND case log instead of monthly manual entry.
+const SR_LIVE_OVERVIEW_KEYS = ['sendRegister', ...SEND_CASE_STATUSES.map(f=>f.key)];
 const SR_REFERRAL_SOURCES = [
   { key:'teacher',  label:'Teacher',               color:'police' },
   { key:'parent',   label:'Parent',                color:'ok' },
@@ -1972,6 +2041,8 @@ const SR_CATEGORY_BUCKETS = [
 let SEND_REPORT = null;
 let srPeriod = currentPeriodKey();
 let srLoadToken = 0;
+let SEND_CASES_LIST = [];
+let sendCasesLoaded = false;
 
 function currentPeriodKey(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
 function periodToMonthKey(period){
@@ -2024,6 +2095,107 @@ async function saveSendReportData(){
 async function changeSendReportPeriod(period){
   srPeriod = period || currentPeriodKey();
   await renderSendReport();
+}
+
+// ---------- SEND case log (SENDCO/DSL/Principal) — feeds the report automatically ----------
+async function loadSendCasesData(force){
+  if(!CAN_USE_APPS_SCRIPT()) return SEND_CASES_LIST;
+  if(sendCasesLoaded && !force) return SEND_CASES_LIST;
+  try{
+    const res = await scriptGet('getSendCases', { adminCode: ME.code });
+    if(res.ok) SEND_CASES_LIST = res.data || [];
+    sendCasesLoaded = true;
+  }catch(e){}
+  return SEND_CASES_LIST;
+}
+function computeSendOverviewLive(){
+  const counts = {};
+  SEND_CASE_STATUSES.forEach(f=>{ counts[f.key] = { primary:0, secondary:0 }; });
+  const register = { primary:new Set(), secondary:new Set() };
+  SEND_CASES_LIST.forEach(c=>{
+    const dept = c.department==='Secondary' ? 'secondary' : 'primary';
+    if(counts[c.status]) counts[c.status][dept]++;
+    if(c.studentId) register[dept].add(c.studentId);
+  });
+  counts.sendRegister = { primary: register.primary.size, secondary: register.secondary.size };
+  return counts;
+}
+// Overwrites the live-computed keys on SEND_REPORT.overview in place, so every
+// consumer (report table, CSV/PDF export, edit modal) stays in sync automatically.
+async function applyLiveSendOverview(force){
+  await loadSendCasesData(force);
+  const live = computeSendOverviewLive();
+  Object.keys(live).forEach(k=>{ SEND_REPORT.overview[k] = live[k]; });
+}
+function sendStatusLabel(key){
+  return (SEND_CASE_STATUSES.find(f=>f.key===key)||{}).label || key;
+}
+function openSendCaseModal(prefillName){
+  if(!CAN_LOG_SEND()){ toast('Only SENDCO, DSL and Principal can log SEND cases','warning'); return; }
+  $('scStudent').value = prefillName || '';
+  $('scDepartment').value = 'Primary';
+  $('scNotes').value = '';
+  $('scStatus').value = '';
+  $('scStatusGrid').innerHTML = SEND_CASE_STATUSES.map(f=>`
+    <button type="button" data-status="${f.key}" onclick="pickSendStatus('${f.key}')" class="scstatus text-left px-4 h-12 rounded-2xl border-2 border-line bg-card text-sm font-bold text-slate-700 hover:border-brand/40 hover:bg-dim/40 transition-colors">${esc(f.label)}</button>`).join('');
+  openModal('sendCaseModal'); icons();
+}
+function pickSendStatus(key){
+  $('scStatus').value = key;
+  document.querySelectorAll('.scstatus').forEach(b=>{
+    const on = b.dataset.status===key;
+    b.className = `scstatus text-left px-4 h-12 rounded-2xl border-2 text-sm font-bold transition-colors ${on?'border-brand bg-brandSoft text-onBrandSoft ring-1 ring-brand/10':'border-line bg-card text-slate-700 hover:border-brand/40 hover:bg-dim/40'}`;
+  });
+}
+async function submitSendCase(){
+  const name = $('scStudent').value.trim();
+  const status = $('scStatus').value;
+  if(!name){ toast('Enter a student name','warning'); return; }
+  if(!status){ toast('Choose a SEND status','warning'); return; }
+  if(!CAN_USE_APPS_SCRIPT()){ toast('Apps Script URL not configured','error'); return; }
+  let s = DB.students.find(x=>x.name.toLowerCase()===name.toLowerCase());
+  const studentId = s ? s.id : uid('s_');
+  if(!s){ s={id:studentId, name, year:'Unknown', form:'—', keyAdult:ME.name, flags:[]}; DB.students.push(s); persist(); }
+  const payload = {
+    studentId, studentName:name,
+    department: $('scDepartment').value || 'Primary',
+    status, notes: $('scNotes').value.trim()
+  };
+  try{
+    const res = await scriptGet('saveSendCase', { adminCode: ME.code, payload: JSON.stringify(payload) });
+    if(!res.ok){ toast(res.error||'Could not log SEND case','error'); return; }
+    logAudit('SEND case logged', `${sendStatusLabel(status)} · ${name}`, ME.name);
+    closeModal('sendCaseModal');
+    toast('SEND case logged — whole-school report updated automatically');
+    sendCasesLoaded = false;
+    if(CURRENT_VIEW==='send-report') await renderSendReport();
+  }catch(e){ toast('Could not log SEND case','error'); }
+}
+async function deleteSendCaseEntry(id){
+  if(!CAN_USE_APPS_SCRIPT()) return;
+  if(!confirm('Remove this SEND case log entry?')) return;
+  try{
+    const res = await scriptGet('deleteSendCase', { adminCode: ME.code, id });
+    if(!res.ok){ toast(res.error||'Could not delete entry','error'); return; }
+    sendCasesLoaded = false;
+    toast('SEND case entry removed');
+    await renderSendReport();
+  }catch(e){ toast('Could not delete entry','error'); }
+}
+function renderSendCaseLog(){
+  const el = $('srCaseLogList'); if(!el) return;
+  const list = [...SEND_CASES_LIST].sort((a,b)=> new Date(b.loggedAt||0)-new Date(a.loggedAt||0));
+  const canManage = CAN_LOG_SEND();
+  el.innerHTML = list.length ? list.map(c=>`
+    <div class="flex items-center gap-3 px-5 py-3">
+      <div class="w-9 h-9 rounded-full bg-brandSoft text-onBrandSoft grid place-items-center font-bold text-xs shrink-0">${esc(studentDotInitials(c.studentName))}</div>
+      <div class="min-w-0 flex-1">
+        <div class="text-sm font-semibold text-ink truncate">${esc(c.studentName)} <span class="text-slate-400 font-medium">· ${esc(c.department||'—')}</span></div>
+        <div class="text-[11px] text-slate-400 font-medium">${esc(sendStatusLabel(c.status))} · logged by ${esc(c.loggedBy||'—')}${c.loggedAt?' · '+fmtShort(c.loggedAt):''}</div>
+      </div>
+      ${canManage ? `<button onclick="deleteSendCaseEntry('${c.id}')" class="w-9 h-9 grid place-items-center rounded-full hover:bg-critSoft text-slate-400 hover:text-crit shrink-0"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
+    </div>`).join('') : emptyState('clipboard-list','No SEND cases logged yet','Use "Log SEND case" to add a student to the register');
+  icons();
 }
 
 function studentDotInitials(name){
@@ -2079,9 +2251,12 @@ async function renderSendReport(){
   const token = ++srLoadToken;
   if($('srPeriodPicker')) $('srPeriodPicker').value = srPeriod;
   SEND_REPORT = await loadSendReportForPeriod(srPeriod);
+  await applyLiveSendOverview();
   if(token !== srLoadToken) return; // a newer period was selected while this was loading
 
   const periodMonthKey = periodToMonthKey(srPeriod);
+
+  renderSendCaseLog();
 
   // 1. Overview summary — manual SEND rows + live safeguarding rows
   const manualRows = SR_OVERVIEW_FIELDS.map(f=>{
@@ -2183,6 +2358,7 @@ async function renderSendReport(){
 
 async function exportSendReportCSV(){
   if(!SEND_REPORT || SEND_REPORT.period!==srPeriod) SEND_REPORT = await loadSendReportForPeriod(srPeriod);
+  await applyLiveSendOverview();
   const periodMonthKey = periodToMonthKey(srPeriod);
   const rows = [];
   rows.push(['I CAN School - SEND & Safeguarding Whole School Report']);
@@ -2259,6 +2435,7 @@ async function exportSendReportPDF(){
   if(!printWindow){ toast('Pop-up blocked — allow pop-ups to export as PDF','error'); return; }
   printWindow.document.write('<p style="font-family:Arial,sans-serif;padding:20px;color:#666">Preparing report…</p>');
   if(!SEND_REPORT || SEND_REPORT.period!==srPeriod) SEND_REPORT = await loadSendReportForPeriod(srPeriod);
+  await applyLiveSendOverview();
   const periodMonthKey = periodToMonthKey(srPeriod);
   const month = SEND_REPORT.month || periodLabel(srPeriod);
   const acts = actionsDueInMonth(periodMonthKey);
@@ -2373,9 +2550,17 @@ async function exportSendReportPDF(){
 
 async function openSendReportEdit(){
   if(!SEND_REPORT || SEND_REPORT.period!==srPeriod) SEND_REPORT = await loadSendReportForPeriod(srPeriod);
+  await applyLiveSendOverview();
   const s = SEND_REPORT;
   const ovRows = SR_OVERVIEW_FIELDS.map(f=>{
     const v = s.overview[f.key]||{primary:0,secondary:0};
+    if(SR_LIVE_OVERVIEW_KEYS.includes(f.key)){
+      return `<div class="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:items-center">
+        <label class="text-xs font-bold text-slate-600">${esc(f.label)}</label>
+        <div class="h-10 px-3 rounded-xl bg-dim/60 flex items-center text-sm font-semibold text-slate-500">${v.primary||0} <span class="text-[10px] font-bold text-slate-400 ml-1.5 uppercase">primary</span></div>
+        <div class="h-10 px-3 rounded-xl bg-dim/60 flex items-center text-sm font-semibold text-slate-500">${v.secondary||0} <span class="text-[10px] font-bold text-slate-400 ml-1.5 uppercase">secondary</span></div>
+      </div>`;
+    }
     return `<div class="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:items-center">
       <label class="text-xs font-bold text-slate-600">${esc(f.label)}</label>
       <input type="number" min="0" id="sr_ov_${f.key}_primary" value="${v.primary||0}" placeholder="Primary" class="h-10 px-3 rounded-xl bg-dim border border-transparent text-sm font-semibold">
@@ -2399,6 +2584,7 @@ async function openSendReportEdit(){
     <div class="bg-card rounded-2xl border border-line p-4 space-y-3">
       <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">SEND register &amp; interventions (Primary / Secondary)</h4>
       <div class="space-y-2.5">${ovRows}</div>
+      <p class="text-[11px] text-slate-400 font-medium">Register totals and SEND stage figures are calculated automatically from the SEND case log (logged by SENDCO/DSL/Principal) and don't need entering here. Only new referrals is entered manually.</p>
     </div>
     <div class="bg-card rounded-2xl border border-line p-4 space-y-3">
       <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Referral overview — who raised the referral</h4>
@@ -2429,6 +2615,7 @@ async function openSendReportEdit(){
 async function saveSendReportEdit(){
   const s = SEND_REPORT;
   SR_OVERVIEW_FIELDS.forEach(f=>{
+    if(SR_LIVE_OVERVIEW_KEYS.includes(f.key)) return; // calculated live from the SEND case log
     s.overview[f.key] = {
       primary: Math.max(0, Number($(`sr_ov_${f.key}_primary`).value)||0),
       secondary: Math.max(0, Number($(`sr_ov_${f.key}_secondary`).value)||0)
@@ -3004,6 +3191,9 @@ function applyRoleLayout(){
   // Show whole school report only to DSL and Principal (not Senior Leadership)
   const sendReportBtn = document.querySelector('[data-nav="send-report"]');
   if(sendReportBtn) sendReportBtn.classList.toggle('hidden', !dslOrPrincipal);
+
+  // SENDCO logs SEND cases from their home screen instead of the full whole-school report
+  $('sendCaseHomeCard')?.classList.toggle('hidden', ME.role!=='SENDCO');
 }
 
 // ---------- USER MANAGEMENT (admin) ----------

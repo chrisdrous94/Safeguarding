@@ -1,6 +1,7 @@
 const SHEET_USERS = 'users';
 const SHEET_CASES = 'cases';
 const SHEET_SEND_REPORTS = 'send_reports';
+const SHEET_SEND_CASES = 'send_cases';
 
 function jsonOut(obj){
   return ContentService.createTextOutput(JSON.stringify(obj))
@@ -159,6 +160,102 @@ function requireReportAccess(code){
   });
   if(!u) return { ok:false, error:'You do not have permission to access the whole-school report' };
   return { ok:true, admin:u };
+}
+
+// Logging individual SEND cases is available to SENDCO, DSL and Principal —
+// broader than requireReportAccess, which gates editing the manual whole-school
+// figures. SENDCO can add students to the register without seeing the full report.
+function requireSendCaseAccess(code){
+  if(isAdminCode(code)) return { ok:true, admin:{ id:'__admin__', firstName:'System', lastName:'Admin', role:'Lead DSL' } };
+  const users = loadUsers();
+  const codeHash = hashCode(code);
+  const codeHashLegacy = hashCodeLegacy(code);
+  const u = users.find(function(x){
+    return x.active && (x.codeHash === codeHash || x.codeHash === codeHashLegacy) &&
+      (x.role==='Lead DSL' || x.role==='Deputy DSL' || x.role==='Principal' || x.role==='SENDCO');
+  });
+  if(!u) return { ok:false, error:'You do not have permission to log SEND cases' };
+  return { ok:true, admin:u };
+}
+
+function sendCaseHeaders(){
+  return ['id','studentId','studentName','department','status','notes','loggedBy','loggedAt','updatedAt'];
+}
+
+function ensureSendCasesSheet(){
+  return getOrCreateSheet(SHEET_SEND_CASES, sendCaseHeaders());
+}
+
+function getSendCases(code){
+  const auth = requireSendCaseAccess(code);
+  if(!auth.ok) return { ok:false, error:auth.error };
+  const sh = ensureSendCasesSheet();
+  const rows = sh.getDataRange().getValues();
+  const list = [];
+  for(let i=1;i<rows.length;i++){
+    const row = rows[i];
+    if(String(row.join('')).trim()==='') continue;
+    list.push({
+      id: row[0],
+      rowId: i+1,
+      studentId: row[1] || '',
+      studentName: row[2] || '',
+      department: row[3] || '',
+      status: row[4] || '',
+      notes: row[5] || '',
+      loggedBy: row[6] || '',
+      loggedAt: row[7] || '',
+      updatedAt: row[8] || ''
+    });
+  }
+  return { ok:true, data:list };
+}
+
+function saveSendCase(code, payloadJson){
+  const auth = requireSendCaseAccess(code);
+  if(!auth.ok) return { ok:false, error:auth.error };
+  let p = {};
+  try { p = JSON.parse(payloadJson || '{}'); } catch(e) {}
+  const studentName = norm(p.studentName);
+  const status = norm(p.status);
+  if(!studentName) return { ok:false, error:'Student name is required' };
+  if(!status) return { ok:false, error:'SEND status is required' };
+  const sh = ensureSendCasesSheet();
+  const existing = getSendCases(code);
+  const list = existing.ok ? existing.data : [];
+  const id = norm(p.id) || ('sc_' + Utilities.getUuid().replace(/-/g,'').slice(0,12));
+  const idx = list.findIndex(function(x){ return x.id === id; });
+  const loggedByName = norm((auth.admin.firstName||'') + ' ' + (auth.admin.lastName||'')) || 'Unknown';
+  const now = nowIso();
+  const row = [
+    id,
+    norm(p.studentId) || ('sid_' + studentName.replace(/\W/g,'')),
+    studentName,
+    norm(p.department),
+    status,
+    norm(p.notes),
+    idx>=0 ? (list[idx].loggedBy || loggedByName) : loggedByName,
+    idx>=0 ? (list[idx].loggedAt || now) : now,
+    now
+  ];
+  if(idx >= 0){
+    sh.getRange(list[idx].rowId, 1, 1, row.length).setValues([row]);
+    return { ok:true, id:id };
+  }
+  sh.appendRow(row);
+  return { ok:true, id:id };
+}
+
+function deleteSendCase(code, id){
+  const auth = requireSendCaseAccess(code);
+  if(!auth.ok) return { ok:false, error:auth.error };
+  const sh = ensureSendCasesSheet();
+  const existing = getSendCases(code);
+  const list = existing.ok ? existing.data : [];
+  const idx = list.findIndex(function(x){ return x.id === id; });
+  if(idx<0) return { ok:false, error:'SEND case not found' };
+  sh.deleteRow(list[idx].rowId);
+  return { ok:true };
 }
 
 function sendReportHeaders(){
@@ -570,6 +667,9 @@ function doGet(e){
     if(action==='notifyActionOwner') return jsonOut(notifyActionOwner(e.parameter.owner, e.parameter.caseId, e.parameter.studentName, e.parameter.actionText, e.parameter.notifier));
     if(action==='getSendReport') return jsonOut(getSendReport(e.parameter.adminCode, e.parameter.period));
     if(action==='saveSendReport') return jsonOut(saveSendReport(e.parameter.adminCode, e.parameter.period, e.parameter.month, e.parameter.payload));
+    if(action==='getSendCases') return jsonOut(getSendCases(e.parameter.adminCode));
+    if(action==='saveSendCase') return jsonOut(saveSendCase(e.parameter.adminCode, e.parameter.payload));
+    if(action==='deleteSendCase') return jsonOut(deleteSendCase(e.parameter.adminCode, e.parameter.id));
     return jsonOut({ ok:false, error:'Unknown action' });
   } catch(err){
     return jsonOut({ ok:false, error:String(err) });
