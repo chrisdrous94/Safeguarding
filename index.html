@@ -652,6 +652,12 @@ tailwind.config = {
           <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Multi-agency referrals</h4>
             <div class="space-y-2" id="caseAgencies"></div>
           </div>
+          <div id="caseSendWrap" class="hidden">
+            <div class="flex items-center justify-between mb-3"><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">SEND status</h4>
+            <span id="caseSendCurrent" class="text-[10px] font-bold px-2 py-0.5 rounded-md"></span></div>
+            <div id="caseSendGrid" class="space-y-1.5"></div>
+            <p class="text-[11px] text-slate-400 font-medium mt-2">Logging a status here feeds the whole-school SEND report automatically.</p>
+          </div>
           <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Teaching/Learning strategies implemented</h4>
             <div id="caseStrategies" class="space-y-1.5 text-[11px] text-slate-600"></div>
           </div>
@@ -1807,7 +1813,56 @@ function openCase(id){
   $('caseMeta').innerHTML = [['Logged',fmtDate(c.date)+' '+fmtTime(c.date)],['Reported by',c.reporter],['Department',c.department||'—'],['Location',c.location||'—'],['Reference',c.id.slice(0,8).toUpperCase()]]
     .map(([k2,v])=>`<div class="flex justify-between gap-2"><span class="text-slate-400 font-medium">${k2}</span><span class="text-ink font-semibold text-right">${esc(v)}</span></div>`).join('');
   renderCaseActions(c); renderCaseTimeline(c);
+  renderCaseSendStatus(c);
   openModal('caseModal'); icons();
+}
+async function renderCaseSendStatus(c){
+  const wrap = $('caseSendWrap'); if(!wrap) return;
+  if(!CAN_LOG_SEND() || !CAN_USE_APPS_SCRIPT()){ wrap.classList.add('hidden'); return; }
+  wrap.classList.remove('hidden');
+  await loadSendCasesData();
+  if(activeCaseId !== c.id) return; // case modal moved on while this was loading
+  const entry = SEND_CASES_LIST.find(x=>x.studentId===c.studentId);
+  $('caseSendCurrent').textContent = entry ? sendStatusLabel(entry.status) : 'Not on register';
+  $('caseSendCurrent').className = `text-[10px] font-bold px-2 py-0.5 rounded-md ${entry?'bg-brandSoft text-brandDark':'bg-dim text-slate-400'}`;
+  $('caseSendGrid').innerHTML = SEND_CASE_STATUSES.map(f=>{
+    const on = entry && entry.status===f.key;
+    return `<button type="button" onclick="setCaseSendStatus('${f.key}')" class="w-full flex items-center justify-between px-3 h-10 rounded-xl border-2 ${on?'border-brand bg-brandSoft text-brandDark':'border-line bg-card text-slate-700'} text-xs font-bold transition-colors hover:border-brand/40">
+      ${esc(f.label)}<i data-lucide="${on?'check':'plus'}" class="w-3.5 h-3.5 ${on?'text-brandDark':'text-slate-300'}"></i></button>`;
+  }).join('') + (entry?`<button type="button" onclick="clearCaseSendStatus()" class="w-full h-9 rounded-xl text-[11px] font-bold text-crit hover:bg-critSoft flex items-center justify-center gap-1.5 mt-1"><i data-lucide="x" class="w-3.5 h-3.5"></i>Remove from SEND register</button>`:'');
+  icons();
+}
+async function setCaseSendStatus(status){
+  const c = DB.cases.find(x=>x.id===activeCaseId); if(!c) return;
+  if(!CAN_USE_APPS_SCRIPT()){ toast('Apps Script URL not configured','error'); return; }
+  const existing = SEND_CASES_LIST.find(x=>x.studentId===c.studentId);
+  const payload = {
+    id: existing?.id, studentId:c.studentId, studentName:c.studentName,
+    department: c.department || 'Primary', status, notes: existing?.notes || ''
+  };
+  try{
+    const res = await scriptGet('saveSendCase', { adminCode: ME.code, payload: JSON.stringify(payload) });
+    if(!res.ok){ toast(res.error||'Could not update SEND status','error'); return; }
+    logAudit('SEND case logged', `${sendStatusLabel(status)} · ${c.studentName}`, ME.name);
+    sendCasesLoaded = false;
+    toast('SEND status updated — whole-school report updated automatically');
+    await renderCaseSendStatus(c);
+    if(CURRENT_VIEW==='send-report') await renderSendReport();
+  }catch(e){ toast('Could not update SEND status','error'); }
+}
+async function clearCaseSendStatus(){
+  const c = DB.cases.find(x=>x.id===activeCaseId); if(!c) return;
+  const existing = SEND_CASES_LIST.find(x=>x.studentId===c.studentId);
+  if(!existing) return;
+  if(!confirm(`Remove ${c.studentName} from the SEND register?`)) return;
+  try{
+    const res = await scriptGet('deleteSendCase', { adminCode: ME.code, id: existing.id });
+    if(!res.ok){ toast(res.error||'Could not update SEND status','error'); return; }
+    sendCasesLoaded = false;
+    toast('Removed from SEND register');
+    await renderCaseSendStatus(c);
+    if(CURRENT_VIEW==='send-report') await renderSendReport();
+  }catch(e){ toast('Could not update SEND status','error'); }
 }
 function renderCaseActions(c){
   $('caseActions').innerHTML = (c.actions||[]).length? c.actions.map(a=>{
