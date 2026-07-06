@@ -132,11 +132,11 @@ function requireAdmin(adminCode){
   const codeHash = hashCode(adminCode);
   const codeHashLegacy = hashCodeLegacy(adminCode);
   const u = users.find(function(x){
-    return x.active && (x.codeHash === codeHash || x.codeHash === codeHashLegacy) && (x.role==='Lead DSL' || x.role==='Senior Leadership');
+    return x.active && (x.codeHash === codeHash || x.codeHash === codeHashLegacy) && (x.role==='Lead DSL' || x.role==='Senior Leadership' || x.role==='Principal');
   });
   if(u) return { ok:true, admin:u };
   const activeAdminUsers = users.filter(function(x){
-    return x.active && (x.role==='Lead DSL' || x.role==='Senior Leadership');
+    return x.active && (x.role==='Lead DSL' || x.role==='Senior Leadership' || x.role==='Principal');
   });
   if(activeAdminUsers.length===0 && adminCode){
     try { PropertiesService.getScriptProperties().setProperty('ADMIN_CODE', normUpper(adminCode)); } catch(e) {}
