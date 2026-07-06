@@ -1,5 +1,6 @@
 const SHEET_USERS = 'users';
 const SHEET_CASES = 'cases';
+const SHEET_SEND_REPORTS = 'send_reports';
 
 function jsonOut(obj){
   return ContentService.createTextOutput(JSON.stringify(obj))
@@ -144,6 +145,82 @@ function requireAdmin(adminCode){
   }
   if(!u) return { ok:false, error:'Invalid admin code' };
   return { ok:true, admin:u };
+}
+
+// Whole-school SEND report access matches the front-end's IS_DSL_OR_PRINCIPAL role
+// set, which is deliberately broader than requireAdmin (user management stays
+// restricted to Lead DSL / Senior Leadership / Principal only).
+function requireReportAccess(code){
+  if(isAdminCode(code)) return { ok:true, admin:{ id:'__admin__', firstName:'System', lastName:'Admin', role:'Lead DSL' } };
+  const users = loadUsers();
+  const codeHash = hashCode(code);
+  const codeHashLegacy = hashCodeLegacy(code);
+  const u = users.find(function(x){
+    return x.active && (x.codeHash === codeHash || x.codeHash === codeHashLegacy) && (x.role==='Lead DSL' || x.role==='Deputy DSL' || x.role==='Principal');
+  });
+  if(!u) return { ok:false, error:'You do not have permission to access the whole-school report' };
+  return { ok:true, admin:u };
+}
+
+function sendReportHeaders(){
+  return ['period','month','overview','referrals','needs','stats','summary','updatedAt','updatedBy'];
+}
+
+function ensureSendReportsSheet(){
+  return getOrCreateSheet(SHEET_SEND_REPORTS, sendReportHeaders());
+}
+
+function getSendReport(code, period){
+  const auth = requireReportAccess(code);
+  if(!auth.ok) return { ok:false, error:auth.error };
+  const p = norm(period);
+  if(!p) return { ok:false, error:'Period is required' };
+  const sh = ensureSendReportsSheet();
+  const rows = sh.getDataRange().getValues();
+  for(let i=1;i<rows.length;i++){
+    if(String(rows[i][0])===p){
+      const row = rows[i];
+      return { ok:true, data:{
+        period:p,
+        month: row[1] || '',
+        overview: parseJsonCell(row[2], {}),
+        referrals: parseJsonCell(row[3], {}),
+        needs: parseJsonCell(row[4], {}),
+        stats: parseJsonCell(row[5], {}),
+        summary: parseJsonCell(row[6], {})
+      }};
+    }
+  }
+  return { ok:true, data:{ period:p, month:'', overview:{}, referrals:{}, needs:{}, stats:{}, summary:{} } };
+}
+
+function saveSendReport(code, period, month, payloadJson){
+  const auth = requireReportAccess(code);
+  if(!auth.ok) return { ok:false, error:auth.error };
+  const p = norm(period);
+  if(!p) return { ok:false, error:'Period is required' };
+  let payload = {};
+  try { payload = JSON.parse(payloadJson || '{}'); } catch(e) {}
+  const sh = ensureSendReportsSheet();
+  const rows = sh.getDataRange().getValues();
+  const row = [
+    p, norm(month),
+    JSON.stringify(payload.overview || {}),
+    JSON.stringify(payload.referrals || {}),
+    JSON.stringify(payload.needs || {}),
+    JSON.stringify(payload.stats || {}),
+    JSON.stringify(payload.summary || {}),
+    nowIso(),
+    norm((auth.admin.firstName||'') + ' ' + (auth.admin.lastName||''))
+  ];
+  for(let i=1;i<rows.length;i++){
+    if(String(rows[i][0])===p){
+      sh.getRange(i+1, 1, 1, row.length).setValues([row]);
+      return { ok:true };
+    }
+  }
+  sh.appendRow(row);
+  return { ok:true };
 }
 
 function caseHeaders(){
@@ -492,6 +569,8 @@ function doGet(e){
     if(action==='deleteUser') return jsonOut(deleteUser(e.parameter.adminCode, e.parameter.id));
     if(action==='notifyAssignee') return jsonOut(notifyAssignee(e.parameter.assignee, e.parameter.caseId, e.parameter.studentName, e.parameter.category, e.parameter.notifier));
     if(action==='notifyActionOwner') return jsonOut(notifyActionOwner(e.parameter.owner, e.parameter.caseId, e.parameter.studentName, e.parameter.actionText, e.parameter.notifier));
+    if(action==='getSendReport') return jsonOut(getSendReport(e.parameter.adminCode, e.parameter.period));
+    if(action==='saveSendReport') return jsonOut(saveSendReport(e.parameter.adminCode, e.parameter.period, e.parameter.month, e.parameter.payload));
     return jsonOut({ ok:false, error:'Unknown action' });
   } catch(err){
     return jsonOut({ ok:false, error:String(err) });

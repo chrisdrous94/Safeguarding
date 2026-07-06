@@ -371,11 +371,12 @@ tailwind.config = {
   <div class="bg-card rounded-4xl border border-line shadow-soft p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
     <div>
       <h2 class="font-display font-bold text-lg text-ink">SEND &amp; Safeguarding Whole School Dashboard</h2>
-      <p class="text-xs text-slate-400 font-medium mt-0.5">Safeguarding figures are live · SEND figures are entered monthly · visible to Principal and DSL</p>
+      <p class="text-xs text-slate-400 font-medium mt-0.5">Safeguarding figures are live · SEND figures are entered monthly and shared with all DSL/Principal accounts · choose any month below</p>
     </div>
-    <div class="flex items-center gap-2">
-      <div class="h-11 px-4 rounded-2xl bg-dim border border-line flex items-center gap-2 text-sm font-bold text-slate-600">
-        <i data-lucide="calendar" class="w-4 h-4 text-brand"></i><span id="srMonthLabel">—</span>
+    <div class="flex items-center gap-2 flex-wrap">
+      <div class="h-11 px-3 rounded-2xl bg-dim border border-line flex items-center gap-2">
+        <i data-lucide="calendar" class="w-4 h-4 text-brand shrink-0"></i>
+        <input type="month" id="srPeriodPicker" onchange="changeSendReportPeriod(this.value)" class="bg-transparent text-sm font-bold text-slate-600 border-0 focus:outline-none focus:ring-0 p-0">
       </div>
       <button onclick="exportSendReportPDF()" title="Export as PDF" class="h-11 px-3 rounded-2xl bg-card border border-line hover:bg-dim text-slate-600 text-sm font-bold flex items-center gap-1.5 shadow-soft transition-colors"><i data-lucide="file-pdf" class="w-4 h-4"></i><span class="hidden sm:inline">PDF</span></button>
       <button onclick="exportSendReportCSV()" title="Export as CSV" class="h-11 px-3 rounded-2xl bg-card border border-line hover:bg-dim text-slate-600 text-sm font-bold flex items-center gap-1.5 shadow-soft transition-colors"><i data-lucide="download" class="w-4 h-4"></i><span class="hidden sm:inline">CSV</span></button>
@@ -1970,9 +1971,25 @@ const SR_CATEGORY_BUCKETS = [
 ];
 
 let SEND_REPORT = null;
-function defaultSendReport(){
+let srPeriod = currentPeriodKey();
+let srLoadToken = 0;
+
+function currentPeriodKey(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+function periodToMonthKey(period){
+  const parts = String(period||'').split('-').map(Number);
+  const y = parts[0]||0, m = parts[1]||1;
+  return y+'-'+(m-1);
+}
+function periodLabel(period){
+  const parts = String(period||'').split('-').map(Number);
+  const y = parts[0], m = parts[1];
+  if(!y || !m) return '—';
+  return new Date(y, m-1, 1).toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+}
+function defaultSendReport(period){
   return {
-    month: new Date().toLocaleDateString('en-GB',{month:'long',year:'numeric'}),
+    period,
+    month: periodLabel(period),
     overview: Object.fromEntries(SR_OVERVIEW_FIELDS.map(f=>[f.key,{primary:0,secondary:0}])),
     referrals: Object.fromEntries(SR_REFERRAL_SOURCES.map(s=>[s.key,0])),
     needs: Object.fromEntries(SR_NEEDS_PROFILE.map(n=>[n.key,0])),
@@ -1980,29 +1997,40 @@ function defaultSendReport(){
     summary: { strengths:'', concerns:'', priorities:'' }
   };
 }
-function loadSendReportData(){
-  const base = defaultSendReport();
-  const raw = LS.get('ics_send_report');
-  if(!raw) return base;
+// SEND figures are shared across every DSL/Principal account via the Apps Script
+// backend (send_reports sheet), keyed by period, instead of per-browser storage.
+async function loadSendReportForPeriod(period){
+  const base = defaultSendReport(period);
+  if(!CAN_USE_APPS_SCRIPT()) return base;
   try{
-    const saved = JSON.parse(raw);
+    const res = await scriptGet('getSendReport', { adminCode: ME.code, period });
+    if(!res.ok || !res.data) return base;
+    const d = res.data;
     return {
-      month: saved.month || base.month,
-      overview: Object.assign(base.overview, saved.overview),
-      referrals: Object.assign(base.referrals, saved.referrals),
-      needs: Object.assign(base.needs, saved.needs),
-      stats: Object.assign(base.stats, saved.stats),
-      summary: Object.assign(base.summary, saved.summary)
+      period,
+      month: d.month || base.month,
+      overview: Object.assign({}, base.overview, d.overview),
+      referrals: Object.assign({}, base.referrals, d.referrals),
+      needs: Object.assign({}, base.needs, d.needs),
+      stats: Object.assign({}, base.stats, d.stats),
+      summary: Object.assign({}, base.summary, d.summary)
     };
   }catch(e){ return base; }
 }
-function saveSendReportData(){ LS.set('ics_send_report', JSON.stringify(SEND_REPORT)); }
+async function saveSendReportData(){
+  if(!CAN_USE_APPS_SCRIPT()) { toast('Apps Script URL not configured','error'); return { ok:false }; }
+  const payload = { overview:SEND_REPORT.overview, referrals:SEND_REPORT.referrals, needs:SEND_REPORT.needs, stats:SEND_REPORT.stats, summary:SEND_REPORT.summary };
+  return scriptGet('saveSendReport', { adminCode: ME.code, period: SEND_REPORT.period, month: SEND_REPORT.month, payload: JSON.stringify(payload) });
+}
+async function changeSendReportPeriod(period){
+  srPeriod = period || currentPeriodKey();
+  await renderSendReport();
+}
 
 function studentDotInitials(name){
   return (name||'').trim().split(/\s+/).filter(Boolean).map(w=>w[0].toUpperCase()+'.').join('');
 }
 function monthKey(d){ const x=new Date(d); return x.getFullYear()+'-'+x.getMonth(); }
-const thisMonthKey = ()=> monthKey(new Date());
 
 function safeguardingCategorySplit(){
   const open = visibleCases().filter(isOpen);
@@ -2021,7 +2049,7 @@ function overviewDeptSplit(list){
     total: list.length
   };
 }
-function overviewLiveRows(){
+function overviewLiveRows(periodMonthKey){
   const cs = visibleCases();
   const open = cs.filter(isOpen);
   const highRisk = open.filter(c=>c.risk==='High'||c.risk==='Critical');
@@ -2029,17 +2057,17 @@ function overviewLiveRows(){
     if(c.status!=='Resolved') return false;
     const tl=[...(c.timeline||[])].sort((a,b)=>new Date(b.time)-new Date(a.time));
     const when = tl[0]?.time || c.date;
-    return monthKey(when)===thisMonthKey();
+    return monthKey(when)===periodMonthKey;
   });
   return [
     { label:'Safeguarding Concerns Open',   ...overviewDeptSplit(open) },
     { label:'High Risk Safeguarding Cases', ...overviewDeptSplit(highRisk) },
-    { label:'Cases Closed this month',      ...overviewDeptSplit(closed) }
+    { label:'Cases Closed in selected month', ...overviewDeptSplit(closed) }
   ];
 }
-function actionsDueThisMonth(){
+function actionsDueInMonth(periodMonthKey){
   return allActions()
-    .filter(a=> a.due && monthKey(a.due)===thisMonthKey())
+    .filter(a=> a.due && monthKey(a.due)===periodMonthKey)
     .sort((a,b)=> new Date(a.due)-new Date(b.due));
 }
 function actionStatusInfo(a){
@@ -2048,9 +2076,13 @@ function actionStatusInfo(a){
   return { label:'In Progress', color:'med', icon:'clock' };
 }
 
-function renderSendReport(){
-  if(!SEND_REPORT) SEND_REPORT = loadSendReportData();
-  $('srMonthLabel').textContent = SEND_REPORT.month || '—';
+async function renderSendReport(){
+  const token = ++srLoadToken;
+  if($('srPeriodPicker')) $('srPeriodPicker').value = srPeriod;
+  SEND_REPORT = await loadSendReportForPeriod(srPeriod);
+  if(token !== srLoadToken) return; // a newer period was selected while this was loading
+
+  const periodMonthKey = periodToMonthKey(srPeriod);
 
   // 1. Overview summary — manual SEND rows + live safeguarding rows
   const manualRows = SR_OVERVIEW_FIELDS.map(f=>{
@@ -2058,7 +2090,7 @@ function renderSendReport(){
     const primary=Number(v.primary)||0, secondary=Number(v.secondary)||0;
     return { label:f.label, primary, secondary, total:primary+secondary };
   });
-  const rows = [...manualRows, ...overviewLiveRows()];
+  const rows = [...manualRows, ...overviewLiveRows(periodMonthKey)];
   $('srOverviewBody').innerHTML = rows.map(r=>`<tr class="border-b border-line last:border-0">
     <td class="px-5 py-2.5 font-semibold text-slate-700">${esc(r.label)}</td>
     <td class="px-5 py-2.5 text-slate-500 font-medium">${r.primary}</td>
@@ -2107,8 +2139,8 @@ function renderSendReport(){
     </div>`;
   $('srCategoryTotal').textContent = total;
 
-  // 5. Actions required this month (live)
-  const acts = actionsDueThisMonth();
+  // 5. Actions required in the selected month (live)
+  const acts = actionsDueInMonth(periodMonthKey);
   $('srActionsTable').innerHTML = acts.length ? acts.map(a=>{
     const st = actionStatusInfo(a);
     return `<button onclick="openCase('${a.caseId}')" class="w-full text-left flex items-center gap-3 p-3 rounded-2xl border border-line hover:bg-dim/50 transition-colors">
@@ -2119,15 +2151,15 @@ function renderSendReport(){
       </div>
       <span class="shrink-0 inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-md bg-${st.color}Soft text-${st.color}"><i data-lucide="${st.icon}" class="w-3 h-3"></i>${st.label}</span>
     </button>`;
-  }).join('') : emptyState('calendar-check','No actions due this month','');
+  }).join('') : emptyState('calendar-check','No actions due in the selected month','');
 
   // 6. Key statistics — manual entries + two live counts
   const stats = [
     { label:'Avg. time referral → observation',          value: SEND_REPORT.stats.avgReferralToObs || '—', unit:'days' , icon:'clock' },
     { label:'Avg. time observation → parent meeting',    value: SEND_REPORT.stats.avgObsToParent || '—',   unit:'days' , icon:'users-round' },
-    { label:'IEP reviews due this month',                value: SEND_REPORT.stats.iepReviewsDue || '0',    unit:''     , icon:'clipboard-list' },
+    { label:'IEP reviews due in selected month',          value: SEND_REPORT.stats.iepReviewsDue || '0',    unit:''     , icon:'clipboard-list' },
     { label:'Safeguarding cases requiring monitoring',    value: visibleCases().filter(c=>c.status==='Monitoring').length, unit:'', icon:'shield-check', live:true },
-    { label:'Staff referrals submitted this month',       value: visibleCases().filter(c=>monthKey(c.date)===thisMonthKey()).length, unit:'', icon:'users', live:true }
+    { label:'Staff referrals submitted in selected month', value: visibleCases().filter(c=>monthKey(c.date)===periodMonthKey).length, unit:'', icon:'users', live:true }
   ];
   $('srKeyStats').innerHTML = stats.map(s=>`<div class="text-center">
     <i data-lucide="${s.icon}" class="w-5 h-5 text-brand mx-auto mb-2"></i>
@@ -2150,16 +2182,17 @@ function renderSendReport(){
   icons();
 }
 
-function exportSendReportCSV(){
-  if(!SEND_REPORT) SEND_REPORT = loadSendReportData();
+async function exportSendReportCSV(){
+  if(!SEND_REPORT || SEND_REPORT.period!==srPeriod) SEND_REPORT = await loadSendReportForPeriod(srPeriod);
+  const periodMonthKey = periodToMonthKey(srPeriod);
   const rows = [];
   rows.push(['I CAN School - SEND & Safeguarding Whole School Report']);
   rows.push(['Generated:', new Date().toLocaleString()]);
   rows.push([]);
   rows.push(['Month:', SEND_REPORT.month]);
-  rows.push(['Reported by:', ME.firstName + ' ' + ME.lastName + ' (' + ME.role + ')']);
+  rows.push(['Reported by:', ME.name + ' (' + ME.role + ')']);
   rows.push([]);
-  
+
   // Overview
   rows.push(['SECTION 1: OVERVIEW SUMMARY']);
   rows.push(['Area of Focus', 'Primary', 'Secondary', 'Total']);
@@ -2168,7 +2201,7 @@ function exportSendReportCSV(){
     return [f.label, v.primary||0, v.secondary||0, (v.primary||0)+(v.secondary||0)];
   });
   manualRows.forEach(r=>rows.push(r));
-  const overviewLive = overviewLiveRows();
+  const overviewLive = overviewLiveRows(periodMonthKey);
   overviewLive.forEach(r=>rows.push([r.label, r.primary, r.secondary, r.total]));
   rows.push([]);
   
@@ -2198,9 +2231,9 @@ function exportSendReportCSV(){
   rows.push(['Statistic', 'Value']);
   rows.push(['Avg. days referral to observation', SEND_REPORT.stats.avgReferralToObs || '—']);
   rows.push(['Avg. days observation to parent meeting', SEND_REPORT.stats.avgObsToParent || '—']);
-  rows.push(['IEP reviews due this month', SEND_REPORT.stats.iepReviewsDue || '0']);
+  rows.push(['IEP reviews due in selected month', SEND_REPORT.stats.iepReviewsDue || '0']);
   rows.push(['Cases requiring monitoring', visibleCases().filter(c=>c.status==='Monitoring').length]);
-  rows.push(['Staff referrals this month', visibleCases().filter(c=>monthKey(c.date)===thisMonthKey()).length]);
+  rows.push(['Staff referrals in selected month', visibleCases().filter(c=>monthKey(c.date)===periodMonthKey).length]);
   rows.push([]);
   
   // Principal Summary
@@ -2220,11 +2253,16 @@ function exportSendReportCSV(){
   toast('Report exported as CSV');
 }
 
-function exportSendReportPDF(){
-  if(!SEND_REPORT) SEND_REPORT = loadSendReportData();
-  // Using print function as PDF export (browser's print to PDF)
+async function exportSendReportPDF(){
+  // Open the window synchronously (in the click handler) so popup blockers allow it,
+  // then fill it in once the period's data has loaded.
   const printWindow = window.open('', '', 'width=900,height=800');
-  const month = SEND_REPORT.month || new Date().toLocaleDateString('en-GB',{month:'long',year:'numeric'});
+  if(!printWindow){ toast('Pop-up blocked — allow pop-ups to export as PDF','error'); return; }
+  printWindow.document.write('<p style="font-family:Arial,sans-serif;padding:20px;color:#666">Preparing report…</p>');
+  if(!SEND_REPORT || SEND_REPORT.period!==srPeriod) SEND_REPORT = await loadSendReportForPeriod(srPeriod);
+  const periodMonthKey = periodToMonthKey(srPeriod);
+  const month = SEND_REPORT.month || periodLabel(srPeriod);
+  const acts = actionsDueInMonth(periodMonthKey);
   const { counts, other, total } = safeguardingCategorySplit();
   
   const html = `
@@ -2249,7 +2287,7 @@ function exportSendReportPDF(){
       <h1>SEND & Safeguarding Whole School Report</h1>
       <div class="meta">
         <p><strong>Month:</strong> ${month}</p>
-        <p><strong>Reported by:</strong> ${ME.firstName} ${ME.lastName} (${ME.role})</p>
+        <p><strong>Reported by:</strong> ${ME.name} (${ME.role})</p>
         <p><strong>Generated:</strong> ${new Date().toLocaleString()}</p>
       </div>
       
@@ -2261,7 +2299,7 @@ function exportSendReportPDF(){
           const total = (v.primary||0)+(v.secondary||0);
           return `<tr><td>${f.label}</td><td>${v.primary||0}</td><td>${v.secondary||0}</td><td><strong>${total}</strong></td></tr>`;
         }).join('')}
-        ${overviewLiveRows().map(r=>`<tr><td>${r.label}</td><td>${r.primary}</td><td>${r.secondary}</td><td><strong>${r.total}</strong></td></tr>`).join('')}
+        ${overviewLiveRows(periodMonthKey).map(r=>`<tr><td>${r.label}</td><td>${r.primary}</td><td>${r.secondary}</td><td><strong>${r.total}</strong></td></tr>`).join('')}
       </table>
       
       <h2>2. Referral Overview</h2>
@@ -2284,25 +2322,25 @@ function exportSendReportPDF(){
         <tr><td><strong>Total Open Concerns</strong></td><td><strong>${total}</strong></td></tr>
       </table>
       
-      <h2>5. Actions Due This Month</h2>
-      ${actionsDueThisMonth().length > 0 ? `
+      <h2>5. Actions Due in Selected Month</h2>
+      ${acts.length > 0 ? `
         <table>
           <tr><th>Student</th><th>Action</th><th>Owner</th><th>Due Date</th><th>Status</th></tr>
-          ${actionsDueThisMonth().map(a=>{
+          ${acts.map(a=>{
             const st = actionStatusInfo(a);
             return `<tr><td>${a.student}</td><td>${a.text}</td><td>${a.owner||'—'}</td><td>${fmtShort(a.due)}</td><td>${st.label}</td></tr>`;
           }).join('')}
         </table>
-      ` : '<p>No actions due this month</p>'}
-      
+      ` : '<p>No actions due in the selected month</p>'}
+
       <h2>6. Key Statistics</h2>
       <table>
         <tr><th>Statistic</th><th>Value</th></tr>
         <tr><td>Avg. time referral to observation</td><td>${SEND_REPORT.stats.avgReferralToObs || '—'}</td></tr>
         <tr><td>Avg. time observation to parent meeting</td><td>${SEND_REPORT.stats.avgObsToParent || '—'}</td></tr>
-        <tr><td>IEP reviews due this month</td><td>${SEND_REPORT.stats.iepReviewsDue || '0'}</td></tr>
+        <tr><td>IEP reviews due in selected month</td><td>${SEND_REPORT.stats.iepReviewsDue || '0'}</td></tr>
         <tr><td>Cases requiring monitoring</td><td>${visibleCases().filter(c=>c.status==='Monitoring').length}</td></tr>
-        <tr><td>Staff referrals this month</td><td>${visibleCases().filter(c=>monthKey(c.date)===thisMonthKey()).length}</td></tr>
+        <tr><td>Staff referrals in selected month</td><td>${visibleCases().filter(c=>monthKey(c.date)===periodMonthKey).length}</td></tr>
       </table>
       
       <h2>8. Principal Summary</h2>
@@ -2326,15 +2364,16 @@ function exportSendReportPDF(){
     </body>
     </html>
   `;
-  
+
+  printWindow.document.open();
   printWindow.document.write(html);
   printWindow.document.close();
   setTimeout(() => printWindow.print(), 500);
   toast('Report opened for printing/PDF export');
 }
 
-function openSendReportEdit(){
-  if(!SEND_REPORT) SEND_REPORT = loadSendReportData();
+async function openSendReportEdit(){
+  if(!SEND_REPORT || SEND_REPORT.period!==srPeriod) SEND_REPORT = await loadSendReportForPeriod(srPeriod);
   const s = SEND_REPORT;
   const ovRows = SR_OVERVIEW_FIELDS.map(f=>{
     const v = s.overview[f.key]||{primary:0,secondary:0};
@@ -2353,9 +2392,10 @@ function openSendReportEdit(){
     <input type="number" min="0" id="sr_need_${n.key}" value="${Number(s.needs[n.key])||0}" class="w-full h-10 px-3 rounded-xl bg-dim border border-transparent text-sm font-semibold">
   </div>`).join('');
   $('sendReportForm').innerHTML = `
-    <div class="bg-card rounded-2xl border border-line p-4 space-y-3">
+    <div class="bg-card rounded-2xl border border-line p-4 space-y-1.5">
       <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Reporting month</h4>
-      <input id="sr_month" value="${esc(s.month)}" placeholder="e.g. May 2025" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-bold">
+      <p class="text-sm font-bold text-ink">${esc(s.month)}</p>
+      <p class="text-[11px] text-slate-400 font-medium">Change the month using the date picker in the report toolbar, then re-open Edit to enter figures for that month.</p>
     </div>
     <div class="bg-card rounded-2xl border border-line p-4 space-y-3">
       <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">SEND register &amp; interventions (Primary / Secondary)</h4>
@@ -2387,9 +2427,8 @@ function openSendReportEdit(){
   `;
   openModal('sendReportModal'); icons();
 }
-function saveSendReportEdit(){
+async function saveSendReportEdit(){
   const s = SEND_REPORT;
-  s.month = $('sr_month').value.trim() || s.month;
   SR_OVERVIEW_FIELDS.forEach(f=>{
     s.overview[f.key] = {
       primary: Math.max(0, Number($(`sr_ov_${f.key}_primary`).value)||0),
@@ -2404,10 +2443,14 @@ function saveSendReportEdit(){
   s.summary.strengths = $('sr_sum_strengths').value.trim();
   s.summary.concerns = $('sr_sum_concerns').value.trim();
   s.summary.priorities = $('sr_sum_priorities').value.trim();
-  saveSendReportData();
+  const saveBtn = document.querySelector('#sendReportModal button[onclick="saveSendReportEdit()"]');
+  if(saveBtn) saveBtn.disabled = true;
+  const res = await saveSendReportData();
+  if(saveBtn) saveBtn.disabled = false;
+  if(res && res.ok===false){ toast(res.error||'Could not save monthly figures','error'); return; }
   closeModal('sendReportModal');
-  renderSendReport();
-  toast('Monthly figures saved');
+  await renderSendReport();
+  toast('Monthly figures saved for all DSL/Principal accounts');
 }
 
 // ---------- Apps Script code for live mode ----------
@@ -3185,7 +3228,6 @@ function copyRevealCode(){
 // ---------- INIT ----------
 function boot(){
   loadPrefs();
-  SEND_REPORT = loadSendReportData();
   $('setUrl').value=SCRIPT_URL; $('scriptCode').textContent=APPSCRIPT;
   setSource(SOURCE);
   document.querySelectorAll('[data-nav]').forEach(b=> b.addEventListener('click',()=>go(b.dataset.nav)));
