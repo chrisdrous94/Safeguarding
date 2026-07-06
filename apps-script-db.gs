@@ -147,7 +147,7 @@ function requireAdmin(adminCode){
 }
 
 function caseHeaders(){
-  return ['id','timestamp','reporter','studentId','studentName','year','category','subcategory','risk','status','description','location','assignee','department','strategies','agencies','bodyMap','timeline','actions'];
+  return ['id','timestamp','reporter','studentId','studentName','year','category','subcategory','risk','status','description','location','assignee','department','strategies','agencies','bodyMap','timeline','actions','strategyImpactPositive','strategyImpactNone','sendcoReason','strategyDuration'];
 }
 
 function ensureCasesSheet(){
@@ -203,7 +203,11 @@ function getCases(){
         agencies: parseJsonCell(row[15], []),
         bodyMap: parseJsonCell(row[16], []),
         timeline: parseJsonCell(row[17], []),
-        actions: parseJsonCell(row[18], [])
+        actions: parseJsonCell(row[18], []),
+        strategyImpactPositive: row[19] || '',
+        strategyImpactNone: row[20] || '',
+        sendcoReason: row[21] || '',
+        strategyDuration: row[22] || ''
       };
       const out = {
         id:c.id,
@@ -225,6 +229,10 @@ function getCases(){
         bodyMap:c.bodyMap,
         timeline:c.timeline,
         actions:c.actions,
+        strategyImpactPositive:c.strategyImpactPositive,
+        strategyImpactNone:c.strategyImpactNone,
+        sendcoReason:c.sendcoReason,
+        strategyDuration:c.strategyDuration,
         payload:c
       };
       // Keep the latest row for each case id to collapse pre-existing duplicate updates.
@@ -274,7 +282,11 @@ function normalizeCasePayload(p){
     agencies: Array.isArray(p.agencies) ? p.agencies : String(p.agencies || '').split(',').filter(Boolean),
     bodyMap: Array.isArray(p.bodyMap) ? p.bodyMap : [],
     timeline: Array.isArray(p.timeline) ? p.timeline : [],
-    actions: Array.isArray(p.actions) ? p.actions : []
+    actions: Array.isArray(p.actions) ? p.actions : [],
+    strategyImpactPositive: p.strategyImpactPositive || '',
+    strategyImpactNone: p.strategyImpactNone || '',
+    sendcoReason: p.sendcoReason || '',
+    strategyDuration: p.strategyDuration || ''
   };
 }
 
@@ -283,7 +295,7 @@ function upsertCaseRecord(payload){
   const cases = getCases().data || [];
   const c = normalizeCasePayload(payload);
   const idx = cases.findIndex(function(x){ return x.id === c.id; });
-  const row = [c.id,c.date,c.reporter,c.studentId,c.studentName,c.year,c.category,c.subcategory,c.risk,c.status,c.description,c.location,c.assignee,c.department,JSON.stringify(c.strategies),JSON.stringify(c.agencies),JSON.stringify(c.bodyMap),JSON.stringify(c.timeline),JSON.stringify(c.actions)];
+  const row = [c.id,c.date,c.reporter,c.studentId,c.studentName,c.year,c.category,c.subcategory,c.risk,c.status,c.description,c.location,c.assignee,c.department,JSON.stringify(c.strategies),JSON.stringify(c.agencies),JSON.stringify(c.bodyMap),JSON.stringify(c.timeline),JSON.stringify(c.actions),c.strategyImpactPositive,c.strategyImpactNone,c.sendcoReason,c.strategyDuration];
   if(idx >= 0){
     const targetRow = Number(cases[idx].rowId || (idx + 2));
     sh.getRange(targetRow, 1, 1, row.length).setValues([row]);
