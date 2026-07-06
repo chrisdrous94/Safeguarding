@@ -90,18 +90,21 @@ tailwind.config = {
       <!-- Code Input -->
       <div>
         <label for="loginCode" class="block text-xs font-bold text-slate-600 uppercase tracking-wide mb-3">Your access code</label>
-        <input
-          id="loginCode"
-          type="text"
-          placeholder="Enter your secure code"
-          autocomplete="off"
-          spellcheck="false"
-          maxlength="24"
-          inputmode="text"
-          aria-label="Access code"
-          class="w-full h-14 px-4 rounded-2xl bg-dim border border-transparent text-center text-xl font-extrabold tracking-[.12em] text-ink transition-all"
-          oninput="this.value=this.value.replace(/\s/g,''); authShowCharCount()"
-          onkeydown="if(event.key==='Enter' && !$('loginBtn').disabled) doCodeLogin()">
+        <div class="relative">
+          <input
+            id="loginCode"
+            type="password"
+            placeholder="Enter your secure code"
+            autocomplete="off"
+            spellcheck="false"
+            maxlength="24"
+            inputmode="text"
+            aria-label="Access code"
+            class="w-full h-14 pl-4 pr-12 rounded-2xl bg-dim border border-transparent text-center text-xl font-extrabold tracking-[.12em] text-ink transition-all"
+            oninput="this.value=this.value.replace(/\s/g,''); authShowCharCount()"
+            onkeydown="if(event.key==='Enter' && !$('loginBtn').disabled) doCodeLogin()">
+          <button type="button" onclick="togglePasswordVisibility('loginCode', this)" aria-label="Show or hide access code" class="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 grid place-items-center rounded-full text-slate-400 hover:text-brand hover:bg-card transition-colors"><i data-lucide="eye" class="w-4 h-4"></i></button>
+        </div>
         <p class="text-[11px] text-slate-400 font-medium mt-2">
           <span id="charCount">0</span>/24 characters · Use upper/lowercase letters, numbers and symbols
         </p>
@@ -760,13 +763,22 @@ tailwind.config = {
     <h3 class="font-display font-bold text-ink mb-4">Change password</h3>
 
     <label class="block text-xs font-bold text-slate-600 mb-1.5">Current password</label>
-    <input id="pwdCurrent" type="password" class="w-full h-11 px-3 rounded-xl bg-card border border-line text-sm font-medium mb-3">
+    <div class="relative mb-3">
+      <input id="pwdCurrent" type="password" class="w-full h-11 pl-3 pr-11 rounded-xl bg-card border border-line text-sm font-medium">
+      <button type="button" onclick="togglePasswordVisibility('pwdCurrent', this)" aria-label="Show or hide password" class="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 grid place-items-center rounded-full text-slate-400 hover:text-brand hover:bg-dim transition-colors"><i data-lucide="eye" class="w-4 h-4"></i></button>
+    </div>
 
     <label class="block text-xs font-bold text-slate-600 mb-1.5">New password</label>
-    <input id="pwdNew" type="password" class="w-full h-11 px-3 rounded-xl bg-card border border-line text-sm font-medium mb-2">
+    <div class="relative mb-2">
+      <input id="pwdNew" type="password" class="w-full h-11 pl-3 pr-11 rounded-xl bg-card border border-line text-sm font-medium">
+      <button type="button" onclick="togglePasswordVisibility('pwdNew', this)" aria-label="Show or hide password" class="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 grid place-items-center rounded-full text-slate-400 hover:text-brand hover:bg-dim transition-colors"><i data-lucide="eye" class="w-4 h-4"></i></button>
+    </div>
 
     <label class="block text-xs font-bold text-slate-600 mb-1.5">Confirm new password</label>
-    <input id="pwdConfirm" type="password" class="w-full h-11 px-3 rounded-xl bg-card border border-line text-sm font-medium mb-4">
+    <div class="relative mb-4">
+      <input id="pwdConfirm" type="password" class="w-full h-11 pl-3 pr-11 rounded-xl bg-card border border-line text-sm font-medium">
+      <button type="button" onclick="togglePasswordVisibility('pwdConfirm', this)" aria-label="Show or hide password" class="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 grid place-items-center rounded-full text-slate-400 hover:text-brand hover:bg-dim transition-colors"><i data-lucide="eye" class="w-4 h-4"></i></button>
+    </div>
 
     <p class="text-[11px] text-slate-400 font-medium mb-4">Use at least 12 characters with uppercase, lowercase, number and symbol.</p>
 
@@ -1043,6 +1055,14 @@ const CAN_USE_APPS_SCRIPT = ()=> SOURCE==='live' && !!SCRIPT_URL;
 
 // ---------- tiny helpers ----------
 const $ = id => document.getElementById(id);
+function togglePasswordVisibility(inputId, btnEl){
+  const el = $(inputId); if(!el) return;
+  const showing = el.type === 'text';
+  el.type = showing ? 'password' : 'text';
+  const icon = btnEl.querySelector('i[data-lucide]');
+  if(icon) icon.setAttribute('data-lucide', showing ? 'eye' : 'eye-off');
+  icons();
+}
 const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid = p => p + Math.random().toString(36).slice(2,9);
 const today = () => new Date();
@@ -1269,15 +1289,32 @@ function openSettingsModal(){
   if($('setApiBase')) $('setApiBase').value=API_BASE_URL;
   openModal('settingsModal');
 }
-function saveSettings(){
-  ME.name=$('setName')?.value.trim()||ME.name;
-  ME.role=$('setRole')?.value||ME.role;
+async function saveSettings(){
+  const newName = $('setName')?.value.trim()||ME.name;
+  const newRole = $('setRole')?.value||ME.role;
+  const nameChanged = newName !== ME.name;
+
+  // The name shown after login comes from the backend (users sheet, or the
+  // admin's stored profile), so a rename has to be saved there too — otherwise
+  // it looks saved locally but reverts to the old name on the next fresh login.
+  if(nameChanged && CAN_USE_APPS_SCRIPT()){
+    const parts = newName.split(' ').filter(Boolean);
+    const firstName = parts.shift() || newName;
+    const lastName = parts.join(' ') || firstName;
+    try{
+      const res = await scriptGet('updateOwnProfile', { code: ME.code, firstName, lastName });
+      if(!res.ok){ toast(res.error || 'Could not save name change', 'error'); return; }
+    }catch(e){ toast('Could not save name change — check your connection', 'error'); return; }
+  }
+
+  ME.name = newName;
+  ME.role = newRole;
   SCRIPT_URL=$('setUrl').value.trim();
   API_BASE_URL = normalizeApiBase($('setApiBase')?.value || '');
   LS.set('ics_name',ME.name); LS.set('ics_role',ME.role);
   LS.set('ics_source',SOURCE); LS.set('ics_url',SCRIPT_URL);
   LS.set('ics_api_base',API_BASE_URL);
-  LS.set('ics_auth', JSON.stringify({ name:ME.name, role:ME.role, expires:new Date(Date.now()+8*3600000).toISOString() }));
+  LS.set('ics_auth', JSON.stringify({ name:ME.name, role:ME.role, userId:ME.userId, code:ME.code, expires:new Date(Date.now()+8*3600000).toISOString() }));
   paintUser(); applyRoleLayout(); closeModal('settingsModal');
   toast('Settings saved');
   if(SOURCE==='live' && SCRIPT_URL) syncData(); else { renderAll(); }

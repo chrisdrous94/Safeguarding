@@ -127,8 +127,18 @@ function isAdminCode(code){
   return !!admin && normUpper(code) === admin;
 }
 
+// The bootstrap admin has no row in the users sheet, so its display name is
+// stored separately in Script Properties — this is what lets a rename via
+// Settings survive a fresh login instead of reverting to "System Admin".
+function adminIdentity(){
+  const props = PropertiesService.getScriptProperties();
+  const firstName = props.getProperty('ADMIN_FIRST_NAME') || 'System';
+  const lastName = props.getProperty('ADMIN_LAST_NAME') || 'Admin';
+  return { id:'__admin__', firstName:firstName, lastName:lastName, role:'Lead DSL' };
+}
+
 function requireAdmin(adminCode){
-  if(isAdminCode(adminCode)) return { ok:true, admin:{ id:'__admin__', firstName:'System', lastName:'Admin', role:'Lead DSL' } };
+  if(isAdminCode(adminCode)) return { ok:true, admin:adminIdentity() };
   const users = loadUsers();
   const codeHash = hashCode(adminCode);
   const codeHashLegacy = hashCodeLegacy(adminCode);
@@ -141,7 +151,7 @@ function requireAdmin(adminCode){
   });
   if(activeAdminUsers.length===0 && adminCode){
     try { PropertiesService.getScriptProperties().setProperty('ADMIN_CODE', normUpper(adminCode)); } catch(e) {}
-    return { ok:true, admin:{ id:'__bootstrap__', firstName:'System', lastName:'Admin', role:'Lead DSL' } };
+    return { ok:true, admin:Object.assign({}, adminIdentity(), { id:'__bootstrap__' }) };
   }
   if(!u) return { ok:false, error:'Invalid admin code' };
   return { ok:true, admin:u };
@@ -151,7 +161,7 @@ function requireAdmin(adminCode){
 // set, which is deliberately broader than requireAdmin (user management stays
 // restricted to Lead DSL / Senior Leadership / Principal only).
 function requireReportAccess(code){
-  if(isAdminCode(code)) return { ok:true, admin:{ id:'__admin__', firstName:'System', lastName:'Admin', role:'Lead DSL' } };
+  if(isAdminCode(code)) return { ok:true, admin:adminIdentity() };
   const users = loadUsers();
   const codeHash = hashCode(code);
   const codeHashLegacy = hashCodeLegacy(code);
@@ -166,7 +176,7 @@ function requireReportAccess(code){
 // broader than requireReportAccess, which gates editing the manual whole-school
 // figures. SENDCO can add students to the register without seeing the full report.
 function requireSendCaseAccess(code){
-  if(isAdminCode(code)) return { ok:true, admin:{ id:'__admin__', firstName:'System', lastName:'Admin', role:'Lead DSL' } };
+  if(isAdminCode(code)) return { ok:true, admin:adminIdentity() };
   const users = loadUsers();
   const codeHash = hashCode(code);
   const codeHashLegacy = hashCodeLegacy(code);
@@ -484,7 +494,7 @@ function loginByCode(code){
   const c = norm(code);
   if(!c) return { ok:false, error:'Access code is required' };
   if(isAdminCode(c)){
-    return { ok:true, user:{ id:'__admin__', firstName:'System', lastName:'Admin', role:'Lead DSL' } };
+    return { ok:true, user:adminIdentity() };
   }
   const users = loadUsers();
   const codeHash = hashCode(c);
@@ -528,6 +538,39 @@ function changeOwnCode(currentCode, newCode){
   users[idx].updatedAt = nowIso();
   saveUsers(users);
   return { ok:true };
+}
+
+// Lets whoever is logged in rename their own account (Settings > Name) without
+// needing admin rights. For the bootstrap admin identity, which has no row in
+// the users sheet, the name is stored in Script Properties instead — otherwise
+// it silently reverted to "System Admin" on every fresh login.
+function updateOwnProfile(code, firstName, lastName){
+  const c = norm(code);
+  const fn = norm(firstName), ln = norm(lastName);
+  if(!c) return { ok:false, error:'Access code is required' };
+  if(!fn || !ln) return { ok:false, error:'First and last name are required' };
+
+  if(isAdminCode(c)){
+    try {
+      PropertiesService.getScriptProperties().setProperty('ADMIN_FIRST_NAME', fn);
+      PropertiesService.getScriptProperties().setProperty('ADMIN_LAST_NAME', ln);
+      return { ok:true, user:adminIdentity() };
+    } catch(e) {
+      return { ok:false, error:'Could not update admin profile' };
+    }
+  }
+
+  const users = loadUsers();
+  const codeHash = hashCode(c);
+  const codeHashLegacy = hashCodeLegacy(c);
+  const idx = users.findIndex(function(u){ return u.codeHash===codeHash || u.codeHash===codeHashLegacy; });
+  if(idx<0) return { ok:false, error:'Access code not recognized' };
+  if(!users[idx].active) return { ok:false, error:'This account is deactivated' };
+  users[idx].firstName = fn;
+  users[idx].lastName = ln;
+  users[idx].updatedAt = nowIso();
+  saveUsers(users);
+  return { ok:true, user:publicUser(users[idx]) };
 }
 
 function listUsers(adminCode){
@@ -660,6 +703,7 @@ function doGet(e){
     if(action==='getCases') return jsonOut(getCases());
     if(action==='login') return jsonOut(loginByCode(e.parameter.code));
     if(action==='changeOwnCode') return jsonOut(changeOwnCode(e.parameter.currentCode, e.parameter.newCode));
+    if(action==='updateOwnProfile') return jsonOut(updateOwnProfile(e.parameter.code, e.parameter.firstName, e.parameter.lastName));
     if(action==='listUsers') return jsonOut(listUsers(e.parameter.adminCode));
     if(action==='saveUser') return jsonOut(saveUserAction(e.parameter.adminCode, e.parameter.id, e.parameter.firstName, e.parameter.lastName, e.parameter.role));
     if(action==='regenUserCode') return jsonOut(regenUserCode(e.parameter.adminCode, e.parameter.id));
