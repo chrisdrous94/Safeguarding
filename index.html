@@ -631,7 +631,7 @@ tailwind.config = {
           <select id="caseStatus" onchange="changeStatus()" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-bold">
             <option>New</option><option>In progress</option><option>Monitoring</option><option>Referred</option><option>Resolved</option></select></div>
           <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Assigned to</h4>
-          <div id="caseAssignee" class="space-y-1.5"></div></div>
+          <div id="caseAssignee" class="flex flex-wrap gap-1.5"></div></div>
           <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Multi-agency referrals</h4>
             <div class="space-y-2" id="caseAgencies"></div>
           </div>
@@ -1775,9 +1775,8 @@ function renderCaseAssignee(c){
   $('caseAssignee').innerHTML = assignees.length ? assignees.map(t=>{
     const on = assigneeList.includes(t);
     const safe = t.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    return `<button type="button" ${isDSL?`onclick="toggleAssignee('${safe}')"`:'disabled'} class="w-full flex items-center justify-between px-3 h-10 rounded-xl border-2 ${on?'border-brand bg-brandSoft':'border-line bg-card'} transition-colors ${isDSL?'':'opacity-70 cursor-default'}">
-      <span class="text-xs font-bold ${on?'text-brandDark':'text-slate-600'}">${esc(t)}</span>
-      <i data-lucide="${on?'check':'plus'}" class="w-4 h-4 ${on?'text-brandDark':'text-slate-300'}"></i></button>`;
+    return `<button type="button" ${isDSL?`onclick="toggleAssignee('${safe}')"`:'disabled'} class="inline-flex items-center gap-1 pl-2.5 pr-2 h-7 rounded-full border-2 text-[11px] font-bold transition-colors ${on?'border-brand bg-brandSoft text-brandDark':'border-line bg-card text-slate-600'} ${isDSL?'hover:border-brand/40':'opacity-70 cursor-default'}">
+      ${esc(t)}<i data-lucide="${on?'check':'plus'}" class="w-3 h-3 ${on?'text-brandDark':'text-slate-300'}"></i></button>`;
   }).join('') : '<p class="text-xs text-slate-400 font-medium italic">No users available to assign.</p>';
   icons();
 }
