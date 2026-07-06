@@ -115,8 +115,7 @@ function publicUser(u){
 function bootstrapAdminCode(){
   const scriptProp = normUpper(PropertiesService.getScriptProperties().getProperty('ADMIN_CODE'));
   if(scriptProp) return scriptProp;
-  // Temporary bootstrap fallback for fresh deployments.
-  return 'CHRISTOF97740590!';
+  return null;
 }
 
 function isAdminCode(code){
