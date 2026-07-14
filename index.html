@@ -713,6 +713,7 @@ tailwind.config = {
           <div class="flex justify-between items-center text-sm"><span class="text-slate-500 font-medium">Key adult</span><span class="font-bold text-ink" id="stuKeyAdult">—</span></div>
         </div>
         <button onclick="reportForCurrentStudent()" class="w-full h-11 rounded-full bg-brand hover:bg-brandDark text-white text-sm font-bold flex items-center justify-center gap-2"><i data-lucide="plus" class="w-4 h-4"></i>New concern</button>
+        <button id="stuDeleteBtn" onclick="deleteStudent()" class="hidden w-full h-10 rounded-full text-xs font-bold text-crit hover:bg-critSoft flex items-center justify-center gap-1.5"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i>Delete student from register</button>
       </div>
       <div class="md:col-span-3 p-5 sm:p-7 bg-surface">
         <h4 class="text-sm font-display font-bold text-ink mb-5 flex items-center gap-2"><i data-lucide="history" class="w-4 h-4 text-brand"></i>Complete chronology</h4>
@@ -2070,6 +2071,7 @@ function openStudent(id){
   const ag=new Set(); cs.forEach(c=>(c.agencies||[]).forEach(a=>ag.add(a)));
   $('stuAgencies').innerHTML=ag.size?[...ag].map(agencyChip).join(''):'<span class="text-xs text-slate-400 italic">None involved</span>';
   $('stuTotal').textContent=cs.length; $('stuOpen').textContent=open; $('stuKeyAdult').textContent=s.keyAdult||'—';
+  $('stuDeleteBtn')?.classList.toggle('hidden', !IS_ADMIN());
   // unified chronology: cases + their timeline events
   let ev=[];
   cs.forEach(c=>{ ev.push({time:c.date,kind:'case',c}); (c.timeline||[]).forEach(t=>{ if(t.type!=='log') ev.push({time:t.time,kind:'event',t,c}); }); });
@@ -2092,6 +2094,37 @@ function openStudent(id){
   openModal('studentModal'); icons();
 }
 function reportForCurrentStudent(){ const s=studentById(activeStudentId); closeModal('studentModal'); setTimeout(()=>openReport(s.name),220); }
+// Fully removes a student: their concern cases, their SEND register entry (feeds the
+// whole-school Overview Summary) and the student record itself, so nothing about them
+// lingers in any report once deleted.
+async function deleteStudent(){
+  const s = studentById(activeStudentId);
+  if(!s) return;
+  if(!IS_ADMIN()){ toast('You do not have permission to delete students','warning'); return; }
+  const cs = casesForStudent(s.id);
+  const warn = cs.length
+    ? `Delete ${s.name} from the register? This permanently removes ${cs.length} concern${cs.length!==1?'s':''} and any SEND register entry, and cannot be undone.`
+    : `Delete ${s.name} from the register? This cannot be undone.`;
+  if(!confirm(warn)) return;
+
+  cs.forEach(c=>{ if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'deleteCase', caseId:c.id, rowId:c.rowId}); });
+  DB.cases = DB.cases.filter(c=>c.studentId!==s.id);
+
+  if(CAN_USE_APPS_SCRIPT()){
+    const sendEntry = SEND_CASES_LIST.find(x=>x.studentId===s.id);
+    if(sendEntry){
+      try{ await scriptGet('deleteSendCase', { adminCode: ME.code, id: sendEntry.id }); }catch(e){}
+      SEND_CASES_LIST = SEND_CASES_LIST.filter(x=>x.id!==sendEntry.id);
+    }
+  }
+
+  DB.students = DB.students.filter(x=>x.id!==s.id);
+  logAudit('Student deleted', s.name);
+  persist();
+  closeModal('studentModal');
+  renderAll();
+  toast(`${s.name} removed from the register`);
+}
 </script>
 <script>
 // ---------- chart colour map ----------
@@ -2981,6 +3014,8 @@ async function saveSendReportEdit(){
 // ---------- Apps Script code for live mode ----------
 const APPSCRIPT = `const SHEET_USERS = 'users';
 const SHEET_CASES = 'cases';
+const SHEET_SEND_CASES = 'send_cases';
+const SHEET_SEND_REPORTS = 'send_reports';
 
 function jsonOut(obj){
   return ContentService.createTextOutput(JSON.stringify(obj))
@@ -3108,28 +3143,72 @@ function requireAdmin(adminCode){
   return { ok:true, admin:u };
 }
 
-function getCases(){
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sh = ss.getSheetByName(SHEET_CASES) || ss.getSheets()[0];
-  const rows = sh.getDataRange().getValues();
+function caseHeaders(){
+  return ['id','date','reporter','studentId','studentName','year','studentClass','department','category','subcategory','risk','status','assignee','location','description','strategies','strategyImpactPositive','strategyImpactNone','sendcoReason','strategyDuration','agencies','actions','timeline','bodyMap'];
+}
+function safeJsonParse(s, fallback){
+  try{ const v = JSON.parse(s); return v===undefined ? fallback : v; }catch(e){ return fallback; }
+}
+function loadCases(){
+  const headers = caseHeaders();
+  const sh = getOrCreateSheet(SHEET_CASES, headers);
+  const vals = sh.getDataRange().getValues();
   const cases = [];
-  for(let i=1;i<rows.length;i++){
-    if(String(rows[i].join('')).trim()==='') continue;
+  for(let i=1;i<vals.length;i++){
+    const r = vals[i];
+    if(String(r.join('')).trim()==='') continue;
     cases.push({
-      rowId:i+1,
-      timestamp:rows[i][0],
-      reporterName:rows[i][1],
-      studentName:rows[i][5],
-      grade:rows[i][6],
-      category:rows[i][11],
-      severity:rows[i][12]||'',
-      description:rows[i][12],
-      status:rows[i][20]||'New',
-      assignee:rows[i][21]||'',
-      agencies:rows[i][22]||''
+      rowId:i+1, id:r[0], date:r[1], reporter:r[2], studentId:r[3], studentName:r[4],
+      year:r[5], studentClass:r[6], department:r[7], category:r[8], subcategory:r[9],
+      risk:r[10], status:r[11], assignee:r[12], location:r[13], description:r[14],
+      strategies:safeJsonParse(r[15], []), strategyImpactPositive:r[16], strategyImpactNone:r[17],
+      sendcoReason:r[18], strategyDuration:r[19], agencies:safeJsonParse(r[20], []),
+      actions:safeJsonParse(r[21], []), timeline:safeJsonParse(r[22], []), bodyMap:safeJsonParse(r[23], [])
     });
   }
-  return { ok:true, status:'success', data:cases };
+  return cases;
+}
+function saveCases(cases){
+  const headers = caseHeaders();
+  const sh = getOrCreateSheet(SHEET_CASES, headers);
+  sh.clearContents();
+  sh.getRange(1,1,1,headers.length).setValues([headers]);
+  if(!cases || !cases.length) return;
+  const rows = cases.map(function(c){
+    return [
+      c.id||'', c.date||'', c.reporter||'', c.studentId||'', c.studentName||'',
+      c.year||'', c.studentClass||'', c.department||'', c.category||'', c.subcategory||'',
+      c.risk||'', c.status||'', c.assignee||'', c.location||'', c.description||'',
+      JSON.stringify(c.strategies||[]), c.strategyImpactPositive||'', c.strategyImpactNone||'',
+      c.sendcoReason||'', c.strategyDuration||'', JSON.stringify(c.agencies||[]),
+      JSON.stringify(c.actions||[]), JSON.stringify(c.timeline||[]), JSON.stringify(c.bodyMap||[])
+    ];
+  });
+  sh.getRange(2,1,rows.length,headers.length).setValues(rows);
+}
+function getCasesAction(){
+  const cases = loadCases();
+  const data = cases.map(function(c){
+    const payload = {};
+    Object.keys(c).forEach(function(k){ if(k!=='rowId') payload[k]=c[k]; });
+    return { rowId:c.rowId, payload:payload };
+  });
+  return { ok:true, status:'success', data:data };
+}
+function syncCaseAction(payload){
+  if(!payload || !payload.id) return { ok:false, error:'Missing case id' };
+  const cases = loadCases();
+  const idx = cases.findIndex(function(c){ return c.id===payload.id; });
+  const merged = idx>=0 ? Object.assign({}, cases[idx], payload) : payload;
+  if(idx>=0) cases[idx] = merged; else cases.push(merged);
+  saveCases(cases);
+  return { ok:true };
+}
+function deleteCaseAction(id){
+  if(!id) return { ok:false, error:'Missing case id' };
+  const cases = loadCases().filter(function(c){ return c.id!==id; });
+  saveCases(cases);
+  return { ok:true };
 }
 
 function loginByCode(code){
@@ -3225,16 +3304,177 @@ function deleteUser(adminCode, id){
   return { ok:true };
 }
 
+function sendCaseHeaders(){
+  return ['id','studentId','studentName','department','status','needArea','notes','loggedBy','loggedAt','updatedAt'];
+}
+function loadSendCases(){
+  const headers = sendCaseHeaders();
+  const sh = getOrCreateSheet(SHEET_SEND_CASES, headers);
+  const vals = sh.getDataRange().getValues();
+  const out = [];
+  for(let i=1;i<vals.length;i++){
+    const r = vals[i];
+    if(String(r.join('')).trim()==='') continue;
+    out.push({ id:r[0], studentId:r[1], studentName:r[2], department:r[3], status:r[4], needArea:r[5], notes:r[6], loggedBy:r[7], loggedAt:r[8], updatedAt:r[9] });
+  }
+  return out;
+}
+function saveSendCases(list){
+  const headers = sendCaseHeaders();
+  const sh = getOrCreateSheet(SHEET_SEND_CASES, headers);
+  sh.clearContents();
+  sh.getRange(1,1,1,headers.length).setValues([headers]);
+  if(!list || !list.length) return;
+  const rows = list.map(function(c){
+    return [c.id||'', c.studentId||'', c.studentName||'', c.department||'', c.status||'', c.needArea||'', c.notes||'', c.loggedBy||'', c.loggedAt||'', c.updatedAt||''];
+  });
+  sh.getRange(2,1,rows.length,headers.length).setValues(rows);
+}
+function getSendCasesAction(adminCode){
+  const auth = requireAdmin(adminCode);
+  if(!auth.ok) return { ok:false, error:auth.error };
+  return { ok:true, data: loadSendCases() };
+}
+function saveSendCaseAction(adminCode, payloadJson){
+  const auth = requireAdmin(adminCode);
+  if(!auth.ok) return { ok:false, error:auth.error };
+  let payload;
+  try{ payload = JSON.parse(payloadJson || '{}'); }catch(e){ return { ok:false, error:'Invalid payload' }; }
+  const name = norm(payload.studentName);
+  if(!name) return { ok:false, error:'Student name is required' };
+  if(!payload.status) return { ok:false, error:'SEND status is required' };
+  const list = loadSendCases();
+  const now = nowIso();
+  let idx = -1;
+  if(payload.id) idx = list.findIndex(function(x){ return x.id===payload.id; });
+  if(idx<0 && payload.studentId) idx = list.findIndex(function(x){ return x.studentId===payload.studentId; });
+  const who = ((auth.admin.firstName||'')+' '+(auth.admin.lastName||'')).trim() || 'Unknown';
+  if(idx>=0){
+    list[idx].studentId = payload.studentId || list[idx].studentId;
+    list[idx].studentName = name;
+    list[idx].department = payload.department || 'Primary';
+    list[idx].status = payload.status;
+    list[idx].needArea = payload.needArea || '';
+    list[idx].notes = payload.notes || '';
+    list[idx].updatedAt = now;
+    saveSendCases(list);
+    return { ok:true, data:list[idx] };
+  }
+  const entry = {
+    id: 'sc_' + Utilities.getUuid().replace(/-/g,'').slice(0,12),
+    studentId: payload.studentId || '',
+    studentName: name,
+    department: payload.department || 'Primary',
+    status: payload.status,
+    needArea: payload.needArea || '',
+    notes: payload.notes || '',
+    loggedBy: who,
+    loggedAt: now,
+    updatedAt: now
+  };
+  list.push(entry);
+  saveSendCases(list);
+  return { ok:true, data:entry };
+}
+function deleteSendCaseAction(adminCode, id){
+  const auth = requireAdmin(adminCode);
+  if(!auth.ok) return { ok:false, error:auth.error };
+  const list = loadSendCases().filter(function(x){ return x.id!==id; });
+  saveSendCases(list);
+  return { ok:true };
+}
+
+function sendReportHeaders(){
+  return ['period','month','payloadJson','updatedBy','updatedAt'];
+}
+function loadSendReports(){
+  const headers = sendReportHeaders();
+  const sh = getOrCreateSheet(SHEET_SEND_REPORTS, headers);
+  const vals = sh.getDataRange().getValues();
+  const out = [];
+  for(let i=1;i<vals.length;i++){
+    const r = vals[i];
+    if(String(r.join('')).trim()==='') continue;
+    out.push({ period:r[0], month:r[1], payloadJson:r[2], updatedBy:r[3], updatedAt:r[4] });
+  }
+  return out;
+}
+function saveSendReports(list){
+  const headers = sendReportHeaders();
+  const sh = getOrCreateSheet(SHEET_SEND_REPORTS, headers);
+  sh.clearContents();
+  sh.getRange(1,1,1,headers.length).setValues([headers]);
+  if(!list || !list.length) return;
+  const rows = list.map(function(r){ return [r.period||'', r.month||'', r.payloadJson||'', r.updatedBy||'', r.updatedAt||'']; });
+  sh.getRange(2,1,rows.length,headers.length).setValues(rows);
+}
+function getSendReportAction(adminCode, period){
+  const auth = requireAdmin(adminCode);
+  if(!auth.ok) return { ok:false, error:auth.error };
+  const list = loadSendReports();
+  const row = list.find(function(r){ return r.period===period; });
+  if(!row) return { ok:true, data:null };
+  let payload = {};
+  try{ payload = JSON.parse(row.payloadJson || '{}'); }catch(e){ payload = {}; }
+  payload.month = row.month;
+  return { ok:true, data:payload };
+}
+function saveSendReportAction(adminCode, period, month, payloadJson){
+  const auth = requireAdmin(adminCode);
+  if(!auth.ok) return { ok:false, error:auth.error };
+  if(!period) return { ok:false, error:'Missing period' };
+  const list = loadSendReports();
+  const now = nowIso();
+  const who = ((auth.admin.firstName||'')+' '+(auth.admin.lastName||'')).trim() || 'Unknown';
+  const idx = list.findIndex(function(r){ return r.period===period; });
+  const row = { period:period, month:month||'', payloadJson:payloadJson||'{}', updatedBy:who, updatedAt:now };
+  if(idx>=0) list[idx]=row; else list.push(row);
+  saveSendReports(list);
+  return { ok:true };
+}
+
+function findUserByFullName(name){
+  const n = normLower(name);
+  if(!n) return null;
+  const users = loadUsers();
+  return users.find(function(u){ return normLower((u.firstName||'')+' '+(u.lastName||''))===n; }) || null;
+}
+function sendNotifyEmail(toUser, subject, body){
+  if(!toUser || !toUser.email) return false;
+  try{ MailApp.sendEmail(toUser.email, subject, body); return true; }catch(e){ return false; }
+}
+function notifyAssigneeAction(p){
+  const u = findUserByFullName(p.assignee);
+  const subject = 'Safeguarding concern assigned: ' + (p.studentName||'');
+  const body = (p.notifier||'Someone') + ' assigned you a ' + (p.category||'safeguarding') + ' concern for ' + (p.studentName||'a student') + '. Case reference: ' + (p.caseId||'');
+  const sent = sendNotifyEmail(u, subject, body);
+  return { ok:true, notified:sent };
+}
+function notifyActionOwnerAction(p){
+  const u = findUserByFullName(p.owner);
+  const subject = 'Safeguarding action assigned: ' + (p.studentName||'');
+  const body = (p.notifier||'Someone') + ' assigned you an action for ' + (p.studentName||'a student') + ': ' + (p.actionText||'') + '. Case reference: ' + (p.caseId||'');
+  const sent = sendNotifyEmail(u, subject, body);
+  return { ok:true, notified:sent };
+}
+
 function doGet(e){
   try {
     const action = norm(e && e.parameter && e.parameter.action) || 'getCases';
-    if(action==='getCases') return jsonOut(getCases());
+    if(action==='getCases') return jsonOut(getCasesAction());
     if(action==='login') return jsonOut(loginByCode(e.parameter.code));
     if(action==='listUsers') return jsonOut(listUsers(e.parameter.adminCode));
     if(action==='saveUser') return jsonOut(saveUserAction(e.parameter.adminCode, e.parameter.id, e.parameter.firstName, e.parameter.lastName, e.parameter.role));
     if(action==='regenUserCode') return jsonOut(regenUserCode(e.parameter.adminCode, e.parameter.id));
     if(action==='toggleUser') return jsonOut(toggleUser(e.parameter.adminCode, e.parameter.id));
     if(action==='deleteUser') return jsonOut(deleteUser(e.parameter.adminCode, e.parameter.id));
+    if(action==='getSendCases') return jsonOut(getSendCasesAction(e.parameter.adminCode));
+    if(action==='saveSendCase') return jsonOut(saveSendCaseAction(e.parameter.adminCode, e.parameter.payload));
+    if(action==='deleteSendCase') return jsonOut(deleteSendCaseAction(e.parameter.adminCode, e.parameter.id));
+    if(action==='getSendReport') return jsonOut(getSendReportAction(e.parameter.adminCode, e.parameter.period));
+    if(action==='saveSendReport') return jsonOut(saveSendReportAction(e.parameter.adminCode, e.parameter.period, e.parameter.month, e.parameter.payload));
+    if(action==='notifyAssignee') return jsonOut(notifyAssigneeAction(e.parameter));
+    if(action==='notifyActionOwner') return jsonOut(notifyActionOwnerAction(e.parameter));
     return jsonOut({ ok:false, error:'Unknown action' });
   } catch(err){
     return jsonOut({ ok:false, error:String(err) });
@@ -3242,32 +3482,14 @@ function doGet(e){
 }
 
 function doPost(e){
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sh = ss.getSheetByName(SHEET_CASES);
-  if(!sh){
-    sh = ss.insertSheet(SHEET_CASES);
-    const header = [];
-    for(let i=1;i<=23;i++) header.push('col'+i);
-    sh.getRange(1,1,1,23).setValues([header]);
+  try{
+    const p = JSON.parse((e && e.postData && e.postData.contents) || '{}');
+    if(p.action==='syncCase' && p.payload) return jsonOut(syncCaseAction(p.payload));
+    if(p.action==='deleteCase' && p.caseId) return jsonOut(deleteCaseAction(p.caseId));
+    return jsonOut({ ok:true, status:'success' });
+  }catch(err){
+    return jsonOut({ ok:false, error:String(err) });
   }
-  const p = JSON.parse(e.postData.contents || '{}');
-  if (p.action==='report' && p.payload){
-    const c = p.payload;
-    const row = new Array(23).fill('');
-    row[0] = c.date || nowIso();
-    row[1] = c.reporter || '';
-    row[5] = c.studentName || '';
-    row[6] = c.year || '';
-    row[11] = c.category || '';
-    row[12] = c.description || '';
-    row[20] = c.status || 'New';
-    row[21] = c.assignee || '';
-    row[22] = (c.agencies || []).join(',');
-    sh.appendRow(row);
-  }
-  if (p.action==='updateStatus' && p.rowId) sh.getRange(Number(p.rowId),21).setValue(p.status);
-  if (p.action==='deleteCase' && p.rowId) sh.getRange(Number(p.rowId),1,1,sh.getLastColumn()).clearContent();
-  return jsonOut({ ok:true, status:'success' });
 }`;
 function copyScript(){ navigator.clipboard?.writeText(APPSCRIPT).then(()=>toast('Apps Script copied')); }
 
