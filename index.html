@@ -553,6 +553,10 @@ tailwind.config = {
         <p class="text-[11px] text-slate-400 mt-1.5 font-medium">New name? It will be added to the register automatically.</p>
       </div>
       <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Class</label>
+        <input id="rClass" placeholder="e.g. 4B, Year 9 Maple" class="w-full h-12 px-4 rounded-2xl bg-card border border-line text-sm font-semibold">
+      </div>
+      <div>
         <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Department</label>
         <select id="rDepartment" class="w-full h-12 px-4 rounded-2xl bg-card border border-line text-sm font-semibold text-slate-700">
           <option value="">Select department…</option>
@@ -731,9 +735,9 @@ tailwind.config = {
           <div><label class="block text-xs font-bold text-slate-600 mb-1.5">Name</label><input id="setName" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-medium"></div>
           <div><label class="block text-xs font-bold text-slate-600 mb-1.5">Role</label>
           <select id="setRole" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-bold">
-            <option>Lead DSL</option><option>Deputy DSL</option><option>Senior Leadership</option><option>Principal</option><option>SENDCO</option><option>Pastoral Lead</option><option>Teacher</option></select></div>
+            <option>Lead DSL</option><option>Deputy DSL</option><option>Head of Primary</option><option>Head of Secondary</option><option>Principal</option><option>SENDCO</option><option>Pastoral Lead</option><option>Teacher</option></select></div>
         </div>
-        <p class="text-[11px] text-slate-400 font-medium">Teachers, SENDCO and Deputy DSLs see concerns assigned to them, reported by them, and all concerns linked to students assigned to them. Lead DSL, Senior Leadership and Principal see all cases and the whole-school dashboard.</p>
+        <p class="text-[11px] text-slate-400 font-medium">Teachers, SENDCO and Deputy DSLs see concerns assigned to them, reported by them, and all concerns linked to students assigned to them. Head of Primary/Head of Secondary see all cases for students in their phase. Lead DSL and Principal see all cases and the whole-school dashboard.</p>
       </div>
       <div class="bg-card rounded-2xl border border-line p-4 space-y-3">
         <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Data source</h4>
@@ -840,7 +844,8 @@ tailwind.config = {
           <option value="Pastoral Lead">Pastoral Lead</option>
           <option value="Deputy DSL">Deputy DSL</option>
           <option value="Lead DSL">Lead DSL</option>
-          <option value="Senior Leadership">Senior Leadership</option>
+          <option value="Head of Primary">Head of Primary</option>
+          <option value="Head of Secondary">Head of Secondary</option>
           <option value="Principal">Principal</option>
         </select>
       </div>
@@ -1053,8 +1058,14 @@ let PUBLIC_REPORT_MODE = false;
 
 // ---------- AUTH helpers (must be before go() function) ----------
 const IS_TEACHER = ()=> ME.role==='Teacher' || ME.role==='Pastoral Lead' || ME.role==='SENDCO';
-const IS_ADMIN   = ()=> ME.role==='Lead DSL' || ME.role==='Senior Leadership' || ME.role==='Principal';
+const IS_HEAD_PRIMARY = ()=> ME.role==='Head of Primary';
+const IS_HEAD_SECONDARY = ()=> ME.role==='Head of Secondary';
+const IS_PHASE_HEAD = ()=> IS_HEAD_PRIMARY() || IS_HEAD_SECONDARY();
+const IS_ADMIN   = ()=> ME.role==='Lead DSL' || ME.role==='Principal' || IS_PHASE_HEAD();
 const IS_DSL_OR_PRINCIPAL = ()=> ME.role==='Lead DSL' || ME.role==='Deputy DSL' || ME.role==='Principal';
+// A case's department buckets into 'Secondary' vs everything else (Primary/Extra/Camps/Weekend Club),
+// matching the existing primary/secondary split used in the SEND report.
+const caseInPhase = (c, phase)=> phase==='Secondary' ? c.department==='Secondary' : c.department!=='Secondary';
 // SENDCO can log SEND cases (feeding the whole-school report) without needing
 // full whole-school-report access, which stays restricted to DSL/Principal.
 const CAN_LOG_SEND = ()=> ME.role==='SENDCO' || ME.role==='Lead DSL' || ME.role==='Deputy DSL' || ME.role==='Principal';
@@ -1176,7 +1187,8 @@ function logAudit(action, detail, who, when){
 
 // ---------- Role-based visibility ----------
 function visibleCases(){
-  if(IS_ADMIN()) return DB.cases;
+  if(ME.role==='Lead DSL' || ME.role==='Principal') return DB.cases;
+  if(IS_PHASE_HEAD()) return DB.cases.filter(c=> caseInPhase(c, IS_HEAD_SECONDARY()?'Secondary':'Primary'));
   const myName = (ME.name||'').toLowerCase().trim();
 
   const getAssignees = (assignee) => {
@@ -1612,6 +1624,11 @@ function renderStudents(){
     if(q && !`${s.name} ${s.form} ${s.year}`.toLowerCase().includes(q)) return false;
     if(flag==='risk'){ if(!casesForStudent(s.id).some(isOpen)) return false; }
     else if(flag!=='All'){ if(!(s.flags||[]).includes(flag)) return false; }
+    // Heads of Primary/Secondary only see students with concerns logged in their phase
+    if(IS_PHASE_HEAD()){
+      const phase = IS_HEAD_SECONDARY()?'Secondary':'Primary';
+      if(!casesForStudent(s.id).some(c=>caseInPhase(c, phase))) return false;
+    }
     // Non-DSL users only see students they're assigned to
     if(!isDSL){
       const assignedCases = casesForStudent(s.id).filter(c=>{
@@ -1662,10 +1679,10 @@ function renderTasks(){
   icons();
 }
 function exportCSV(){
-  const rows=[['Student','Year','Category','Subcategory','Risk','Status','Assignee','Reporter','Department','Strategies implemented','Strategy duration','Greatest impact','Little/no impact','SENDCo reason','Agencies','Logged','Description']];
+  const rows=[['Student','Year','Class','Category','Subcategory','Risk','Status','Assignee','Reporter','Department','Strategies implemented','Strategy duration','Greatest impact','Little/no impact','SENDCo reason','Agencies','Logged','Description']];
   filteredConcerns().forEach(c=> {
     const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(s=>s.trim()).filter(Boolean);
-    rows.push([c.studentName,c.year,c.category,c.subcategory,c.risk,c.status,assigneeList.join('; '),c.reporter,c.department||'—',(c.strategies||[]).map(key=>STRATEGIES[key]?.label||key).join(' | '),
+    rows.push([c.studentName,c.year,c.studentClass||'—',c.category,c.subcategory,c.risk,c.status,assigneeList.join('; '),c.reporter,c.department||'—',(c.strategies||[]).map(key=>STRATEGIES[key]?.label||key).join(' | '),
       c.strategyDuration||'',c.strategyImpactPositive||'',c.strategyImpactNone||'',c.sendcoReason||'',
       (c.agencies||[]).join(' | '),fmtDate(c.date),(c.description||'').replace(/\s+/g,' ')]);
   });
@@ -1723,6 +1740,8 @@ function openReport(prefillName){
   $('rStudent').value=prefillName||''; $('rCategory').value=''; $('rDesc').value='';
   $('rLocation').value=''; $('rReporter').value=ME.name; $('rRisk').value='Medium';
   $('rDepartment').value='';
+  const existingStu = prefillName ? DB.students.find(x=>x.name.toLowerCase()===prefillName.toLowerCase()) : null;
+  $('rClass').value = (existingStu && existingStu.form && existingStu.form!=='—') ? existingStu.form : '';
   $('rStrategyImpactPositive').value=''; $('rStrategyImpactNone').value=''; $('rSendcoReason').value='';
   $('rStrategyDuration').value='';
   document.querySelectorAll('input[name="rStrategy"]').forEach(cb=> cb.checked=false);
@@ -1804,12 +1823,15 @@ function submitConcern(){
   const cat=$('rCategory').value;
   if(!name){ toast('Enter a student name','warning'); return; }
   if(!cat){ toast('Choose a category','warning'); return; }
+  const studentClass=$('rClass').value.trim();
   let s=DB.students.find(x=>x.name.toLowerCase()===name.toLowerCase());
-  if(!s){ s={id:uid('s_'),name,year:'Unknown',form:'—',keyAdult:ME.name,flags:[]}; DB.students.push(s); }
+  if(!s){ s={id:uid('s_'),name,year:'Unknown',form:studentClass||'—',keyAdult:ME.name,flags:[]}; DB.students.push(s); }
+  else if(studentClass && (!s.form || s.form==='—')){ s.form=studentClass; }
   const strategies = Array.from(document.querySelectorAll('input[name="rStrategy"]:checked')).map(cb=> cb.value);
   const now=new Date().toISOString();
   const reporterName=$('rReporter').value.trim()||ME.name||'Anonymous reporter';
   const c={ id:uid('c_'), studentId:s.id, studentName:s.name, year:s.year,
+    studentClass:studentClass||s.form||'—',
     category:cat, subcategory:$('rSubcategory').value||'', risk:$('rRisk').value,
     department:$('rDepartment').value||'', strategies:strategies,
     strategyImpactPositive:$('rStrategyImpactPositive').value.trim(),
@@ -1878,7 +1900,7 @@ function openCase(id){
   ].filter(Boolean).join('');
   $('caseStrategies').innerHTML = strategyItems + (strategyExtras?`<div class="mt-3 pt-3 border-t border-line space-y-2 text-[11px] text-slate-600">${strategyExtras}</div>`:'');
   // meta
-  $('caseMeta').innerHTML = [['Logged',fmtDate(c.date)+' '+fmtTime(c.date)],['Reported by',c.reporter],['Department',c.department||'—'],['Location',c.location||'—'],['Reference',c.id.slice(0,8).toUpperCase()]]
+  $('caseMeta').innerHTML = [['Logged',fmtDate(c.date)+' '+fmtTime(c.date)],['Reported by',c.reporter],['Class',c.studentClass||'—'],['Department',c.department||'—'],['Location',c.location||'—'],['Reference',c.id.slice(0,8).toUpperCase()]]
     .map(([k2,v])=>`<div class="flex justify-between gap-2"><span class="text-slate-400 font-medium">${k2}</span><span class="text-ink font-semibold text-right">${esc(v)}</span></div>`).join('');
   renderCaseActions(c); renderCaseTimeline(c);
   renderCaseSendStatus(c);
@@ -3080,7 +3102,7 @@ function requireAdmin(adminCode){
   const codeHash = hashCode(adminCode);
   const codeHashLegacy = hashCodeLegacy(adminCode);
   const u = users.find(function(x){
-    return x.active && (x.codeHash === codeHash || x.codeHash === codeHashLegacy) && (x.role==='Lead DSL' || x.role==='Senior Leadership' || x.role==='Principal');
+    return x.active && (x.codeHash === codeHash || x.codeHash === codeHashLegacy) && (x.role==='Lead DSL' || x.role==='Head of Primary' || x.role==='Head of Secondary' || x.role==='Principal');
   });
   if(!u) return { ok:false, error:'Invalid admin code' };
   return { ok:true, admin:u };
@@ -3505,7 +3527,7 @@ function applyRoleLayout(){
   $('mobileBottomNav')?.classList.remove('hidden');
   document.querySelectorAll('.admin-nav').forEach(el=>el.classList.toggle('hidden',!admin));
   
-  // Show whole school report only to DSL and Principal (not Senior Leadership)
+  // Show whole school report only to DSL and Principal (not Heads of Primary/Secondary)
   const sendReportBtn = document.querySelector('[data-nav="send-report"]');
   if(sendReportBtn) sendReportBtn.classList.toggle('hidden', !dslOrPrincipal);
 
@@ -3548,7 +3570,7 @@ async function renderUsers(){
     const users=data.users;
     APP_USERS = users.map(u => `${u.firstName} ${u.lastName}`.trim()).filter(Boolean);
     if(!users.length){ el.innerHTML=emptyState('users','No users yet','Create the first user to give them access to the platform.'); return; }
-    const roleColor={'Lead DSL':'crit','Senior Leadership':'crit','Principal':'crit','Deputy DSL':'high','SENDCO':'med','Pastoral Lead':'med','Teacher':'low'};
+    const roleColor={'Lead DSL':'crit','Head of Primary':'crit','Head of Secondary':'crit','Principal':'crit','Deputy DSL':'high','SENDCO':'med','Pastoral Lead':'med','Teacher':'low'};
     el.innerHTML=users.map(u=>{
       const full=`${esc(u.firstName)} ${esc(u.lastName)}`;
       const rc=roleColor[u.role]||'low';
@@ -3578,7 +3600,7 @@ async function renderUsers(){
     if(!local.length){ el.innerHTML=emptyState('wifi-off','Server not available','No local users found. Start the server with  node server.js  to manage users.'); }
     else {
       const users = local;
-      const roleColor={'Lead DSL':'crit','Senior Leadership':'crit','Principal':'crit','Deputy DSL':'high','SENDCO':'med','Pastoral Lead':'med','Teacher':'low'};
+      const roleColor={'Lead DSL':'crit','Head of Primary':'crit','Head of Secondary':'crit','Principal':'crit','Deputy DSL':'high','SENDCO':'med','Pastoral Lead':'med','Teacher':'low'};
       el.innerHTML=users.map(u=>{
         const full=`${esc(u.firstName)} ${esc(u.lastName)}`;
         const rc=roleColor[u.role]||'low';
