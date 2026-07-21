@@ -3467,11 +3467,7 @@ function secureByteHex(numBytes){
 function secureBytes(numBytes){
   const hex = secureByteHex(numBytes);
   const bytes = [];
-  for(let i=0;i<hex.length;i+=2){
-    let v = parseInt(hex.substr(i,2),16);
-    if(v > 127) v -= 256; // Apps Script's Byte[] bridge needs Java's signed range (-128..127) —
-    bytes.push(v);        // an array with any value >127 fails to type-match and throws.
-  }
+  for(let i=0;i<hex.length;i+=2) bytes.push(parseInt(hex.substr(i,2),16));
   return bytes;
 }
 function secureToken(){
@@ -3483,34 +3479,53 @@ function secureToken(){
 function hashCode(code){ return sha256Hex(norm(code)); }
 function hashCodeLegacy(code){ return sha256Hex(normUpper(code)); }
 
-// PBKDF2 (RFC 8018) built from HMAC-SHA256, since Apps Script's V8 runtime
-// has no native PBKDF2/AES/WebCrypto. Iterated stretching makes brute-forcing
-// a stolen hash meaningfully slower than the old single-round SHA-256.
-function hmacBytes(messageBytes, keyString){
-  return Utilities.computeHmacSha256Signature(messageBytes, keyString);
+// PBKDF2 (RFC 8018-flavoured) built from HMAC-SHA256, since Apps Script's V8
+// runtime has no native PBKDF2/bcrypt/WebCrypto. Iterated stretching makes
+// brute-forcing a stolen hash meaningfully slower than the old single-round
+// SHA-256.
+//
+// Deliberately works entirely in hex-string space rather than passing a
+// hand-built byte array to Utilities.computeHmacSha256Signature: Apps
+// Script's JS<->Java bridge only reliably recognizes a Byte[] parameter when
+// the array is one it returned itself (e.g. from computeDigest/
+// base64Decode), not one built with push()/concat() — regardless of whether
+// the values are in a signed or unsigned range. Every call below uses only
+// the plain (String, String) overload, the least ambiguous one available,
+// so there's no array-vs-Byte[] type-matching to get wrong. This is an
+// internal, self-consistent scheme (hash and verify always go through the
+// same functions) — it doesn't need to match an external PBKDF2 test vector.
+function hmacHex(hexMessage, keyString){
+  return bytesToHex(Utilities.computeHmacSha256Signature(hexMessage, keyString));
 }
-function pbkdf2Hex(password, saltBytes, iterations){
-  const hLen = 32;
-  let U = hmacBytes(saltBytes.concat([0,0,0,1]), password);
-  const T = U.slice();
-  for(let c=1;c<iterations;c++){
-    U = hmacBytes(U, password);
-    for(let k=0;k<hLen;k++) T[k] = T[k] ^ U[k];
+function xorHex(aHex, bHex){
+  let out = '';
+  for(let i=0;i<aHex.length;i+=2){
+    const v = (parseInt(aHex.substr(i,2),16) ^ parseInt(bHex.substr(i,2),16)) & 0xFF;
+    out += (v<16?'0':'') + v.toString(16);
   }
-  return bytesToHex(T);
+  return out;
 }
-function hashCodeStrong(code, saltBytes, iterations){
+function pbkdf2Hex(password, saltHex, iterations){
+  let U = hmacHex(saltHex + '00000001', password);
+  let T = U;
+  for(let c=1;c<iterations;c++){
+    U = hmacHex(U, password);
+    T = xorHex(T, U);
+  }
+  return T;
+}
+function hashCodeStrong(code, saltHex, iterations){
   const iter = iterations || PBKDF2_ITERATIONS;
-  const salt = saltBytes || secureBytes(16);
+  const salt = saltHex || secureByteHex(16);
   const hashHex = pbkdf2Hex(norm(code), salt, iter);
-  return 'pbkdf2$' + iter + '$' + Utilities.base64Encode(salt) + '$' + hashHex;
+  return 'pbkdf2$' + iter + '$' + salt + '$' + hashHex;
 }
 function verifyStrongHash(code, stored){
   const parts = String(stored).split('$');
   if(parts.length !== 4 || parts[0] !== 'pbkdf2') return false;
   const iter = Number(parts[1]);
-  const saltBytes = Array.prototype.slice.call(Utilities.base64Decode(parts[2]));
-  const actualHex = pbkdf2Hex(norm(code), saltBytes, iter);
+  const saltHex = parts[2];
+  const actualHex = pbkdf2Hex(norm(code), saltHex, iter);
   return timingSafeEqual(actualHex, parts[3]);
 }
 // Verifies against whichever scheme the stored hash is in; the caller is
