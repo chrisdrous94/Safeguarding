@@ -1,11 +1,3 @@
 exclude:
-  - node_modules
-  - api
-  - server.js
-  - data-store.js
-  - users.json
   - apps-script-db.gs
-  - package.json
-  - package-lock.json
-  - .env.example
   - .env

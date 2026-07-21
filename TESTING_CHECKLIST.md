@@ -1,18 +1,17 @@
-# Sign-In System Testing Checklist
+# Sign-In & Platform Testing Checklist
 
 ## Pre-Deployment
 
 ### Environment Setup
-- [ ] `.env` file exists with `ADMIN_CODE` set
-- [ ] `PORT` is set (default: 3000)
-- [ ] SMTP credentials configured (optional, for email feature)
-- [ ] `npm install` completed successfully
-- [ ] `npm start` runs without errors
+- [ ] Apps Script Web App deployed from `apps-script-db.gs` (Execute as: Me, Access: Anyone)
+- [ ] `ADMIN_CODE` script property set (or a fresh sheet with no admin users yet, so the first login bootstraps it)
+- [ ] Web App `.../exec` URL configured in `index.html` (`SCRIPT_URL`) or via Settings
+- [ ] Underlying Google Sheet's sharing restricted to the owner/service account only
 
-### Server Startup
-- [ ] Server starts and displays welcome message
-- [ ] Admin code status shows in startup message
-- [ ] Server accessible at `http://localhost:3000`
+### Automated checks (run on any change)
+- [ ] `node --check` passes on the inline JS extracted from `index.html`
+- [ ] `node --check` passes on `apps-script-db.gs`
+- [ ] jsdom smoke test boots the app and switches every view without a console error
 
 ---
 
@@ -21,102 +20,68 @@
 ### Initial Load
 - [ ] Auth overlay appears on first load
 - [ ] Logo and title display correctly
-- [ ] Two tabs visible: "Access code" and "Email request"
-- [ ] "Access code" tab is selected by default
 - [ ] Focus automatically on code input
 
-### Access Code Mode
+### Access Code Login
 
 #### Basic Flow
-- [ ] User can type access code (letters + numbers)
-- [ ] Input auto-converts to uppercase
+- [ ] User can type access code
 - [ ] Character count updates in real-time
-- [ ] Max length enforced (12 characters)
 - [ ] Pressing Enter submits the form
 
 #### Valid Code Entry
-- [ ] Entering valid code → "Verifying..." state
+- [ ] Entering a valid code → "Verifying…" state
 - [ ] Button disabled during verification
 - [ ] Success message appears with user's name
-- [ ] UI fades to dashboard after 800ms
-- [ ] User logged in and navigating to dashboard
+- [ ] User logged in and lands on the dashboard
+- [ ] No access code appears anywhere in the Network tab request URL (only in the POST body)
 
 #### Invalid Code Entry
-- [ ] Entering invalid code → Error message appears
-- [ ] Error message is user-friendly
+- [ ] Entering an invalid code → error message appears
+- [ ] Error message is user-friendly (no user enumeration — same generic message whether the code doesn't exist or belongs to a deactivated account, per `loginByCode`)
 - [ ] Button re-enables after error
 - [ ] Input remains focused for retry
-- [ ] Can clear and try again
 
 #### Validation Errors
 - [ ] Empty code → "Please enter your access code" warning
-- [ ] Too short (< 6 chars) → "Must be at least 6 characters" warning
-- [ ] Special characters → Automatically stripped
-- [ ] Very long input → Limited to 12 chars
+- [ ] Too short (< 6 chars) → warning
+- [ ] Spaces in code → warning
+- [ ] Very long input rejected server-side too (not just trimmed client-side)
+
+#### Rate limiting
+- [ ] 5 consecutive failed attempts with the same code → "Too many attempts" error, even if a 6th attempt would've been the correct code
+- [ ] A *different* code is unaffected by another code's lockout
+- [ ] Lockout clears after ~15 minutes
 
 #### Network Issues
 - [ ] Offline → "Network error" message
-- [ ] Server down → "Server unavailable" message
-- [ ] Timeout → "Network error" with retry option
-
-### Email Request Mode
-
-#### Tab Switching
-- [ ] Clicking "Email request" switches to email tab
-- [ ] Tab button styling updates (brand color)
-- [ ] Email input receives focus
-- [ ] Code mode input clears on switch
-- [ ] Can switch back to code mode
-
-#### Basic Flow
-- [ ] Email input accepts text
-- [ ] Valid email format required
-- [ ] Clicking "Send access code" shows loading
-- [ ] Button disabled during sending
-- [ ] Success message: "Check your email inbox..."
-
-#### Validation
-- [ ] Empty email → "Please enter your school email" warning
-- [ ] Invalid format → "Please enter a valid email address" warning
-- [ ] Input clears after successful send
-- [ ] Focus remains on input for retry
-
-#### Email Delivery (if SMTP configured)
-- [ ] Email arrives within 5 minutes
-- [ ] Email contains the access code
-- [ ] Email format is professional
-- [ ] Code in email works for login
-- [ ] Multiple codes overwrite old ones
+- [ ] Apps Script URL not configured → clear message prompting Settings
 
 ### Session Management
 
 #### First Time Login
-- [ ] After successful login, overlay fades
-- [ ] Dashboard loads automatically
-- [ ] User name displays in top-right
-- [ ] User initials show in avatar
-- [ ] Role displayed correctly
+- [ ] After successful login, overlay fades and dashboard loads automatically
+- [ ] User name/initials/role display correctly
 
 #### Page Reload
-- [ ] Session persists on page reload
+- [ ] Session persists on page reload (token still valid)
 - [ ] No auth overlay appears
-- [ ] Dashboard loads immediately
-- [ ] User info is still visible
+- [ ] `localStorage` (`ics_session`) contains only a token + display fields — **never** the access code
+
+#### Idle timeout
+- [ ] After 18 minutes of inactivity, a "Still there?" warning appears with a countdown
+- [ ] Clicking "Stay signed in" dismisses the warning and resets the timer
+- [ ] Ignoring the warning signs the user out automatically at 20 minutes
+- [ ] Any mouse/keyboard/touch activity before the warning appears keeps resetting the idle timer
 
 #### Sign Out
-- [ ] Sign out button accessible (sidebar or topbar)
-- [ ] Clicking sign out shows confirmation or immediate logout
-- [ ] Auth overlay reappears
-- [ ] All session data cleared
-- [ ] Code input is empty
-- [ ] Email input is empty
-- [ ] Focus on code input for accessibility
+- [ ] Sign out clears local session state and calls the server to revoke the token
+- [ ] Auth overlay reappears; code input is empty and focused
+- [ ] A revoked token can no longer be reused for any authenticated action
 
 #### Session Expiration
-- [ ] Sessions last 8 hours
-- [ ] After 8 hours, requires re-login
-- [ ] Expired session doesn't break app
-- [ ] User must sign in again
+- [ ] Server-side session expires after 20 minutes idle (sliding) or 8 hours absolute, whichever comes first
+- [ ] An expired/invalid token on any authenticated call triggers a clean "session expired, please sign in again" prompt rather than a silent failure or crash
 
 ---
 
@@ -124,17 +89,13 @@
 
 ### Keyboard Navigation
 - [ ] Tab key moves through form inputs
-- [ ] Tab moves through tabs
-- [ ] Enter key submits the form
+- [ ] Enter key submits the login form
 - [ ] Error messages announced to screen readers
 
-### Screen Reader (NVDA/JAWS)
+### Screen Reader
 - [ ] Auth overlay is readable
-- [ ] Tab labels announce properly
 - [ ] Input labels are associated
-- [ ] Error messages are announced
-- [ ] Button state changes announced
-- [ ] Success messages announced
+- [ ] Error/success messages are announced
 
 ### Visual
 - [ ] Text has sufficient contrast (WCAG AA)
@@ -149,168 +110,81 @@
 ### Responsive Layout
 - [ ] Auth overlay centered on phone
 - [ ] Inputs are touch-friendly (44px minimum)
-- [ ] Text size is readable
-- [ ] Buttons have appropriate spacing
 - [ ] No horizontal scrolling needed
 
 ### Touch Input
 - [ ] Code input accepts touch keyboard
-- [ ] Uppercase auto-conversion works
 - [ ] Submit button tappable
-- [ ] Tab switching works on touch
 - [ ] Mobile keyboard closes after submit
-
-### iOS Specific
-- [ ] Page zoom works
-- [ ] Autocomplete doesn't interfere
-- [ ] Notch doesn't cover content
-- [ ] Safe area respected
-
-### Android Specific
-- [ ] Keyboard doesn't overlap buttons
-- [ ] Back button handled properly
-- [ ] Orientation change handled
 
 ---
 
 ## Security Testing
 
 ### Input Validation
-- [ ] SQL injection attempts blocked
-- [ ] XSS attempts blocked
-- [ ] Code injection attempts blocked
-- [ ] Very long inputs handled
-- [ ] Special characters sanitized
+- [ ] XSS attempts in any free-text field (description, notes, names) are escaped on render, not executed
+- [ ] Very long inputs rejected server-side (name/notes length bounds, code length bounds)
+- [ ] Role field can't be set to an arbitrary string via a crafted request — server validates against the fixed role list
 
-### Session Security
-- [ ] Session stored in localStorage (encrypted data)
-- [ ] No sensitive data in URL
-- [ ] No passwords stored anywhere
-- [ ] HTTPS recommended (in production)
-- [ ] Cross-origin requests handled
+### Session & transport
+- [ ] No access code or session token ever appears in a URL (check Network tab across every authenticated action, not just login)
+- [ ] `localStorage` never contains a raw access code, at any point in the session lifecycle
+- [ ] Every sensitive action (user management, SEND report, case status) re-validates the caller's role server-side — confirm by checking a lower-privilege account can't successfully call an admin action even if the client-side nav is hidden
+- [ ] CSP header/meta present; a script from a non-allowlisted host fails to load if injected
 
 ### Error Messages
 - [ ] No system paths exposed
-- [ ] No database information leaked
-- [ ] No user enumeration possible
-- [ ] Generic messages for sensitive errors
+- [ ] No Google Sheet/Apps Script internals leaked in error text
+- [ ] No user enumeration possible (login error is identical for "code doesn't exist" and "code deactivated")
 
 ---
 
 ## Performance Testing
 
-### Load Time
 - [ ] Auth overlay appears instantly
-- [ ] Font loads without FOUT
-- [ ] Interactive within 2 seconds
-- [ ] No janky animations
-
-### Responsiveness
-- [ ] Code input never freezes
-- [ ] Buttons respond immediately to clicks
-- [ ] No delay in character count update
-- [ ] Animations are smooth (60fps)
-
-### Network
-- [ ] Login request < 1 second (normal network)
-- [ ] Email send response < 2 seconds
-- [ ] Handles slow networks gracefully
-- [ ] Timeout after 10 seconds
+- [ ] Searching/filtering concerns or students doesn't lag while typing (debounced)
+- [ ] Chart.js only downloads once you open Dashboard/Analytics/the SEND report, not on initial boot
+- [ ] Re-opening the app shortly after doesn't re-fetch the full case list if nothing changed server-side (check Network tab: a `getVersion` call, not a full `getCases`, on most reopens)
+- [ ] A concern/student/task list beyond 50 items shows a "Show more" control rather than rendering everything at once
 
 ---
 
 ## Browser Compatibility
 
-### Chrome/Edge
-- [ ] Auth overlay displays correctly
-- [ ] All features work
-- [ ] No console errors
-- [ ] Mobile responsive
-
-### Firefox
-- [ ] Auth overlay displays correctly
-- [ ] All features work
-- [ ] No console errors
-- [ ] Mobile responsive
-
-### Safari
-- [ ] Auth overlay displays correctly
-- [ ] All features work
-- [ ] No console errors
-- [ ] iOS responsive
-
-### Mobile Browsers
-- [ ] Chrome Mobile ✓
-- [ ] Safari Mobile ✓
-- [ ] Firefox Mobile ✓
+- [ ] Chrome/Edge — auth overlay, all features, no console errors
+- [ ] Firefox — same
+- [ ] Safari (desktop + iOS) — same
+- [ ] Mobile Chrome/Safari — same
 
 ---
 
-## Email Functionality (Optional)
+## Work Item 4 — Full Chronology
 
-### SMTP Configuration
-- [ ] SMTP_HOST is valid
-- [ ] SMTP_PORT is correct (usually 587)
-- [ ] SMTP_SECURE matches port (false for 587)
-- [ ] SMTP_USER is valid email
-- [ ] SMTP_PASS is correct
+- [ ] Opening a student's "Full chronology" button navigates to a dedicated view (not just the quick timeline in the student profile)
+- [ ] Every concern, note, status change, agency referral, reassignment, action and body-map record for that student appears, sorted by date
+- [ ] Type filter and date-range filters narrow the list correctly
+- [ ] CSV export downloads a file matching the currently-filtered list
+- [ ] Print/PDF opens a clean printable summary
+- [ ] An audit log entry ("Chronology opened") is created each time
+- [ ] A Teacher without access to a given student can't reach that student's chronology (same gating as the Students view)
 
-### Gmail Setup (if using Gmail)
-- [ ] Gmail account has 2FA enabled
-- [ ] App-specific password generated
-- [ ] App password used in SMTP_PASS
-- [ ] "Less secure apps" not needed (using app password)
+## Work Item 5 — Linked concerns & families
 
-### Email Testing
-- [ ] Test email sends without errors
-- [ ] Email arrives in inbox (not spam)
-- [ ] Email format is readable
-- [ ] Code in email is correct
-- [ ] Email uses provided template
-- [ ] Multiple emails overwrite previous codes
+- [ ] From a case detail view, linking another case shows it on both cases' "Linked cases" panels
+- [ ] Unlinking removes it from both sides
+- [ ] Creating a family, assigning students, and saving persists across a page reload and a fresh login
+- [ ] Removing a student from a family clears their family badge
+- [ ] A family with 3+ combined open concerns in the last 90 days shows the alert badge; a family under the threshold doesn't
+- [ ] Existing students with no family assigned show no family badge and aren't otherwise affected
 
 ---
 
 ## Error Scenarios
 
-### Simulate Failures
-- [ ] Kill server while user logs in
-- [ ] Disconnect network
-- [ ] Provide invalid SMTP config
-- [ ] Use invalid code multiple times
-- [ ] Try code case variations
-
-### Expected Behavior
-- [ ] Graceful error message in all cases
-- [ ] User can retry
-- [ ] No app crashes
-- [ ] Console shows helpful errors
-- [ ] No sensitive data exposed
+- [ ] Apps Script deployment unreachable → graceful error, no app crash
+- [ ] Invalid/expired session mid-action → clean re-auth prompt, no silent data loss (case edits queued via the optimistic local save aren't lost — check `persist()`/localStorage after a forced session expiry)
+- [ ] Concurrent edits: two sessions editing the same case in quick succession don't corrupt the sheet (LockService serializes the writes)
 
 ---
 
-## Deployment Checklist
-
-### Before Going Live
-- [ ] All tests pass
-- [ ] No console errors
-- [ ] `.env` is configured
-- [ ] SMTP is working (if enabled)
-- [ ] Users have admin codes assigned
-- [ ] Support documentation updated
-- [ ] Server has sufficient resources
-- [ ] Database backups enabled
-- [ ] Monitoring/logging enabled
-
-### Post-Deployment
-- [ ] Monitor error logs
-- [ ] Test first few logins manually
-- [ ] Collect user feedback
-- [ ] Fix any issues immediately
-- [ ] Document any workarounds
-- [ ] Update support docs as needed
-
----
-
-**Last Updated:** 2026-06-30
-**Checklist Version:** 1.0
+**Last updated:** 2026-07-21

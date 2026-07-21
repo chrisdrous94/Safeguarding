@@ -1,436 +1,99 @@
-# I CAN School - Safeguarding Platform
-## Sign-In System Improvements (v2.0)
+# I CAN School — Safeguarding Platform
 
-A modern, intuitive, and secure sign-in system for the I CAN School Safeguarding Platform.
-
----
-
-## 🎯 What's New
-
-### Two Login Methods
-- **Access Code** - For users with a code
-- **Email Request** - Self-service code delivery
-
-### Enhanced Experience
-- ✨ Modern two-tab interface
-- 🔄 Real-time validation and feedback
-- 📱 Mobile-optimized design
-- ♿ Full accessibility support
-- 🔒 Secure session management
-
-### Better Errors
-- 👤 User-friendly messages
-- 🎯 Clear guidance
-- 🔐 Privacy-conscious (no user enumeration)
-- 📞 Contact info for support
+A KCSIE-aligned safeguarding case-management platform for I CAN School. Single-file frontend (`index.html`), Google Apps Script backend (`apps-script-db.gs`) writing to a Google Sheet. There is no Node/Express server — an earlier Node-based deployment path has been fully retired.
 
 ---
 
-## 🚀 Quick Start
+## Architecture
 
-### Setup (2 minutes)
+- **Frontend**: `index.html` — one file, Tailwind (CDN), Chart.js (loaded lazily), Lucide icons, Material You–style design. No build step.
+- **Backend**: `apps-script-db.gs`, deployed as a Google Apps Script Web App. Reads/writes a Google Sheet with these tabs (created automatically on first use if missing):
+  - `users` — staff accounts and hashed access codes
+  - `cases` — every logged concern
+  - `send_reports` / `send_cases` — the whole-school SEND report and register
+  - `students` — durable per-student metadata (currently just `familyId`/`notes` — student name/year/form are still derived from case rows)
+  - `families` — sibling groupings for the Families view
+- All authenticated calls are `POST` requests with a JSON body (never a URL query string, and never a GET) — see **Security model** below for why.
 
-```bash
-# 1. Install dependencies
-npm install
+---
 
-# 2. Create configuration
-echo "ADMIN_CODE=YOUR_CODE_HERE" > .env
+## Deployment (Apps Script)
 
-# 3. Start server
-npm start
+1. Open the Google Sheet you want to use as the database, then **Extensions → Apps Script**.
+2. Paste the contents of `apps-script-db.gs` into the script editor (or use Settings → "Apps Script code" → Copy inside the running app, which always mirrors this repo file exactly).
+3. **Deploy → New deployment → Web app**. Execute as **Me**, access **Anyone** (the app enforces its own auth on top of this — see below). Copy the `.../exec` URL.
+4. In the script editor, go to **Project Settings → Script Properties** and set:
+   - `ADMIN_CODE` — the master code the first Lead DSL logs in with. **Do not** put this in a committed file; set it only here. Alternatively, leave it unset — the very first person to log in with any code on a brand-new sheet (with no active Lead DSL/Principal/Senior Leadership user yet) automatically becomes the bootstrap admin and this property gets set for you.
+5. Paste the Web App URL into the running app's **Settings → Apps Script Web App URL** field (or edit `SCRIPT_URL` near the top of `index.html` before hosting it).
+6. **Lock down the underlying Sheet's sharing to yourself/the service account only.** This is a manual step in Google Sheets/Drive sharing settings — it can't be done from code, and it's the primary at-rest protection for this data (see Security model).
+7. Host `index.html` anywhere that serves static files (GitHub Pages, etc.) — `_config.yml` already excludes the backend source and any local secrets from a GitHub Pages build.
 
-# 4. Open browser
-# http://localhost:3000
+### Migrating an existing deployment
+
+All changes here are additive — nothing about your existing `users`/`cases`/`send_*` rows needs to change by hand:
+
+- **`codeHash` column (users sheet)**: unchanged column, new value format. Existing plain-SHA-256 hashes keep working — the first successful login against a legacy hash silently re-hashes it with salted PBKDF2 and saves it back. No user re-registration needed.
+- **`linkedCaseIds` column (cases sheet)**: new, appended after `strategyDuration`. Defaults to `[]` for every existing row.
+- **`students` and `families` sheets**: new, created automatically the first time they're needed. Empty until you assign a student to a family.
+- **Sessions**: login now returns a short-lived opaque token instead of the app storing your access code. Existing users are unaffected — you just log in the same way, with your existing code.
+
+---
+
+## Security model
+
+This app handles real child-protection data, so the auth model is deliberately conservative:
+
+- **No access codes in URLs.** Every authenticated action is a `POST` with a JSON body (`Content-Type: text/plain` to stay a CORS "simple request", since Apps Script Web Apps can't answer a CORS preflight). `login` is the only action that doesn't already require a session.
+- **No access codes stored client-side.** `localStorage` holds only an opaque session token (`ics_session`), never the code. The code only ever exists in memory for the duration of the login/change-password round trip.
+- **Sessions**: issued by the server on login (`CacheService`, keyed by a hash of the token — the raw token is never stored or logged server-side), a 20-minute sliding idle window, an 8-hour absolute cap, and revocable via logout. The UI warns you at 18 minutes of inactivity and signs you out automatically at 20 unless you confirm you're still there.
+- **Password hashing**: PBKDF2 (HMAC-SHA256, 12,000 iterations, random 16-byte salt per user) — a from-scratch implementation, since Apps Script's V8 runtime has no native PBKDF2/bcrypt/WebCrypto. Legacy single-round SHA-256 hashes are upgraded transparently on next login.
+- **Access codes**: generated from `Utilities.getUuid()`-sourced entropy (CSPRNG-backed), not `Math.random()`.
+- **Rate limiting**: failed login attempts are throttled per submitted code (5 attempts, then a 15-minute lockout for that code) via `CacheService`.
+- **Server-side role checks**: every admin/case-sensitive action re-validates the caller's role from their session on the server — the client's role display is never trusted for authorization.
+- **CSP**: a `Content-Security-Policy` meta tag pins `script-src`/`connect-src` to `'self'` plus the exact CDN hosts and the Apps Script domain. Honest caveat: this is a single static file with one large inline script and no build step, so `script-src` can't drop `'unsafe-inline'` without a nonce source we don't have — the CSP's value here is blocking any *other* script host from loading, not sandboxing the inline code itself.
+- **SRI**: Chart.js and Lucide are pinned to exact versions with `integrity`/`crossorigin` attributes. Tailwind's Play CDN and Google Fonts are the two accepted exceptions — neither serves a single stable-hashable file (Play CDN is a runtime compiler; Fonts serves UA-varying CSS), which is the same trade-off most sites accept for both.
+- **At-rest protection**: restricted Sheet sharing (manual step, see Deployment) + session auth + the audit log are the committed protections in this pass. Field-level encryption of free-text (case descriptions, body-map notes) was considered and deliberately **not** implemented — Apps Script has no native AES/WebCrypto, so doing this "properly" means vendoring a third-party cipher implementation into a security-critical file, which is its own review burden. This is flagged as a known gap, not a silent omission.
+- **What's out of scope for this app**: 2FA, SSO, IP allowlisting. All would be reasonable future additions.
+
+---
+
+## Features
+
+- **Dashboard, Concerns, Students, Actions, Analytics, Audit log** — the existing case-management views.
+- **Body map** — record injury locations on a concern.
+- **SEND & Safeguarding whole-school report** — monthly figures for Lead DSL/Deputy DSL/Principal, fed automatically by the SEND case register (SENDCO/DSL/Principal).
+- **Full Chronology** (per student) — a single date-sorted timeline merging every concern, timeline note, status change, agency referral, action and body-map record held on one child, filterable by type and date range, exportable to CSV and printable/PDF-able. Opened from a student's profile ("Full chronology" button); logs an audit entry each time it's opened. Uses the same full-history visibility as the existing student profile (once you have legitimate access to open a student, you see their complete picture — not fragmented by who logged which case, which matches how the app already worked before this feature existed).
+- **Linked concerns** — from a case's detail view, link it to other related cases (e.g. a sibling's case, or a related incident); linked cases show inline and the link is stored on both sides.
+- **Families** — group siblings together; the Families view shows each family's members with a combined open-concern count and flags (a small badge) when a family's combined open concerns cross a threshold within a rolling 90-day window. A family badge appears on a student's card once they're assigned.
+
+### Known limitation: student identity isn't fully stable
+
+Students aren't a first-class record with a permanent ID — `studentId` is derived from a name string in a few places, so a typo or different capitalization can produce a different ID and fragment one child's history across it. Chronology and Families inherit this, same as the rest of the app already does. Fixing this would mean a "merge students" feature, which is out of scope here — worth knowing about, not something this pass silently papered over.
+
+---
+
+## Local development
+
+There's no local server anymore — `index.html` is a static file that talks directly to your deployed Apps Script Web App URL. Open it directly in a browser (or serve it with any static file server) and point **Settings → Apps Script Web App URL** at your deployment.
+
+---
+
+## Testing
+
+See `TESTING_CHECKLIST.md` for a full manual QA pass. Automated checks run as part of any change to this repo:
+- A Node syntax check (`node --check`) on the inline JS extracted from `index.html`, and on `apps-script-db.gs`.
+- A jsdom smoke test that boots the app and switches between every view without a console error.
+
+Neither of these executes real Apps Script code (`SpreadsheetApp`/`CacheService`/`LockService` only exist in a live deployment) — a real login/session/save round trip against a live Apps Script deployment and test spreadsheet is manual QA.
+
+---
+
+## Repository layout
+
 ```
-
-### Sign In
-1. Enter your access code
-2. Click "Access platform"
-3. Success! You're in
-
-### First Time User
-1. Click "Email request" tab
-2. Enter school email
-3. Check email for code (1-5 minutes)
-4. Use code to sign in
-
----
-
-## 📖 Documentation
-
-### For Everyone
-- **[QUICKSTART.md](./QUICKSTART.md)** - Setup and getting started (5 min read)
-- **[SIGNIN_IMPROVEMENTS.md](./SIGNIN_IMPROVEMENTS.md)** - Features and usage (10 min read)
-
-### For Administrators
-- **[QUICKSTART.md](./QUICKSTART.md)** - "For Administrators" section
-- **[TESTING_CHECKLIST.md](./TESTING_CHECKLIST.md)** - Pre-deployment validation
-
-### For Developers
-- **[QUICKSTART.md](./QUICKSTART.md)** - "For Developers" section
-- **[CHANGES.md](./CHANGES.md)** - Technical changes made
-
-### For Testing
-- **[TESTING_CHECKLIST.md](./TESTING_CHECKLIST.md)** - Comprehensive test scenarios
-
----
-
-## 📋 Project Structure
-
+index.html            single-file frontend
+apps-script-db.gs      Apps Script backend (deploy this as the Web App)
+_config.yml            GitHub Pages config — excludes backend source from the published site
+TESTING_CHECKLIST.md   manual QA checklist
+.gitignore             keeps secrets and local artifacts out of git
 ```
-safeguarding/
-├── index.html                 # Single-page app (frontend)
-├── server.js                  # Express server (backend)
-├── data-store.js              # User data persistence
-├── users.json                 # User database
-├── package.json               # Dependencies
-├── .env                       # Configuration (create this)
-├── SIGNIN_IMPROVEMENTS.md     # Feature guide
-├── QUICKSTART.md              # Setup instructions
-├── TESTING_CHECKLIST.md       # Testing guide
-├── CHANGES.md                 # What changed
-└── README.md                  # This file
-```
-
----
-
-## ⚙️ Configuration
-
-### Required (`.env`)
-```
-ADMIN_CODE=YOUR_SECURE_CODE_HERE
-PORT=3000
-```
-
-### Optional (Email Support)
-```
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=your-email@gmail.com
-SMTP_PASS=your-app-password
-```
-
-For Gmail, see [Gmail Setup Guide](./QUICKSTART.md#gmail-setup-if-using-gmail).
-
----
-
-## 🔐 Security
-
-✅ Code-based authentication  
-✅ Secure session management  
-✅ Input validation and sanitization  
-✅ No user enumeration attacks possible  
-✅ Generic error messages  
-✅ HTTPS ready (for production)  
-✅ Environment variable configuration  
-✅ Encrypted password hashing  
-
----
-
-## 📱 Features
-
-### Access Control
-- Two authentication methods
-- Role-based access (Teacher, DSL, Admin, etc.)
-- Active/inactive user flags
-- Session expiration (8 hours)
-
-### User Experience
-- Real-time validation
-- Friendly error messages
-- Loading states
-- Character counter
-- Mobile responsive
-- Touch-friendly
-- Keyboard accessible
-
-### Session Management
-- Persistent sessions
-- Auto-restore on page reload
-- Complete logout
-- Session timeout
-- Secure localStorage storage
-
-### Email Support
-- Automatic code generation
-- Professional email template
-- Delivery within 5 minutes
-- Auto-user creation
-- Multiple code support
-
----
-
-## 🌐 Browser Support
-
-| Browser | Support | Notes |
-|---------|---------|-------|
-| Chrome | ✅ Latest 2 | Best support |
-| Firefox | ✅ Latest 2 | Fully supported |
-| Safari | ✅ Latest 2 | Fully supported |
-| Edge | ✅ Latest 2 | Fully supported |
-| Mobile | ✅ iOS/Android | Optimized layout |
-
----
-
-## 🧪 Testing
-
-### Pre-Deployment
-1. **Setup**: Follow QUICKSTART.md
-2. **Test**: Use TESTING_CHECKLIST.md
-3. **Validate**: All tests should pass
-4. **Deploy**: Ready for production
-
-### Quick Test
-```bash
-npm start
-# Open http://localhost:3000
-# Try signing in with your ADMIN_CODE
-```
-
----
-
-## 📊 Performance
-
-| Metric | Value |
-|--------|-------|
-| Auth overlay load | < 100ms |
-| Login response | < 1s (normal network) |
-| Email delivery | 1-5 minutes |
-| Session restore | Instant |
-| Mobile load | < 2s |
-
----
-
-## ⌨️ Keyboard Shortcuts
-
-| Key | Action |
-|-----|--------|
-| Tab | Move between fields |
-| Enter | Submit login form |
-| Ctrl+Shift+D | Sign out (dev) |
-| Ctrl+K | Command palette (future) |
-
----
-
-## 🔄 API Endpoints
-
-### Login
-```
-POST /api/login
-- Input: { code: "ABC123DEF456" }
-- Response: { ok: true, user: {...} }
-```
-
-### Request Email Code
-```
-POST /api/verify-email
-- Input: { email: "user@school.com" }
-- Response: { ok: true, message: "Check your email..." }
-```
-
-### Admin: List Users
-```
-GET /api/admin/users
-- Headers: Authorization: Bearer <ADMIN_CODE>
-- Response: { ok: true, users: [...] }
-```
-
-See [SIGNIN_IMPROVEMENTS.md](./SIGNIN_IMPROVEMENTS.md) for full API documentation.
-
----
-
-## 🛠️ Troubleshooting
-
-### Server won't start
-```bash
-# Check Node version (v14+ required)
-node --version
-
-# Try different port if 3000 in use
-echo "PORT=8000" >> .env
-
-# Reinstall dependencies
-rm -rf node_modules && npm install
-```
-
-### Sign-in fails
-- Verify ADMIN_CODE in .env
-- Check browser console (F12 → Console)
-- Check server logs
-- Try incognito mode
-
-### Email not working
-- Verify SMTP credentials
-- Check spam folder
-- Review server logs
-- Test with different email
-
-See [QUICKSTART.md Troubleshooting](./QUICKSTART.md#troubleshooting) for more.
-
----
-
-## 📞 Support
-
-### Resources
-- 📖 **Docs**: See documentation links above
-- 🐛 **Bugs**: Check server/browser console
-- 💡 **Ideas**: Suggest features
-- ❓ **Questions**: Contact your DSL
-
-### Common Issues
-1. **Can't sign in?**
-   - Check ADMIN_CODE spelling
-   - Clear browser cache
-   - Try incognito mode
-
-2. **Email not arriving?**
-   - Check spam folder
-   - Verify SMTP settings
-   - Wait 5 minutes
-
-3. **Lost access code?**
-   - Use email request to get new one
-   - Contact admin for new code
-   - Check admin panel history
-
----
-
-## 📝 Version Information
-
-**Current Version:** 2.0  
-**Release Date:** 2026-06-30  
-**Status:** Production Ready ✅  
-
-### What's Changed in v2.0
-- Complete sign-in UI redesign
-- Email-based access (new)
-- Enhanced error messages
-- Better accessibility
-- Comprehensive documentation
-- Security improvements
-- Performance optimizations
-
-### From v1.0
-- Simpler code entry only
-- Basic error handling
-- Limited mobile support
-- Minimal documentation
-
----
-
-## 🚀 Deployment
-
-### Development
-```bash
-npm start
-```
-
-### Production
-```bash
-# Use process manager (recommended)
-npm install -g pm2
-pm2 start server.js --name safeguarding
-pm2 save
-
-# Or with Node
-NODE_ENV=production node server.js
-```
-
-### Environment Variables (Production)
-- Use `.env.production` instead of `.env`
-- Set `NODE_ENV=production`
-- Use strong ADMIN_CODE (20+ chars)
-- Use HTTPS (not HTTP)
-- Configure SMTP properly
-
----
-
-## 🤝 Contributing
-
-Improvements welcome! Common enhancements:
-- SMS code delivery
-- Two-factor authentication
-- SSO integration
-- Biometric auth
-- Rate limiting
-- Session timeout warnings
-
----
-
-## 📄 License
-
-I CAN School Safeguarding Platform  
-© 2026 I CAN School  
-
----
-
-## 🎓 Learning Resources
-
-### For New Users
-1. Read this README
-2. Read [QUICKSTART.md](./QUICKSTART.md)
-3. Try signing in
-4. Explore the dashboard
-
-### For Administrators
-1. Read [QUICKSTART.md](./QUICKSTART.md#for-administrators)
-2. Review [SIGNIN_IMPROVEMENTS.md](./SIGNIN_IMPROVEMENTS.md)
-3. Complete [TESTING_CHECKLIST.md](./TESTING_CHECKLIST.md)
-
-### For Developers
-1. Read [QUICKSTART.md](./QUICKSTART.md#for-developers)
-2. Review [CHANGES.md](./CHANGES.md)
-3. Study [SIGNIN_IMPROVEMENTS.md](./SIGNIN_IMPROVEMENTS.md#backend-changes)
-
----
-
-## ✅ Pre-Launch Checklist
-
-Before deploying to users:
-
-- [ ] Read all documentation
-- [ ] Complete TESTING_CHECKLIST.md
-- [ ] Configure .env properly
-- [ ] Test with real users
-- [ ] Verify email (if enabled)
-- [ ] Train staff
-- [ ] Create backup
-- [ ] Monitor logs
-- [ ] Have support plan
-
----
-
-## 🎯 Next Steps
-
-1. **First Time Setup**
-   - Follow [QUICKSTART.md](./QUICKSTART.md)
-   - Run `npm install && npm start`
-   - Sign in with ADMIN_CODE
-
-2. **Create Users**
-   - Go to Users section
-   - Create staff accounts
-   - Share codes securely
-
-3. **Enable Email** (optional)
-   - Configure SMTP in .env
-   - Restart server
-   - Test email delivery
-
-4. **Go Live**
-   - Complete testing
-   - Train team
-   - Deploy to production
-   - Monitor logs
-
----
-
-**Questions?** See [QUICKSTART.md](./QUICKSTART.md#support)  
-**Ready?** Start with `npm install && npm start` 🚀
-
----
-
-Last updated: 2026-06-30  
-Status: ✅ Production Ready

@@ -1,0 +1,14 @@
+# Secrets — never commit
+.env
+.env.local
+*.env
+
+# Legacy Node artifacts (backend is Google Apps Script only)
+node_modules/
+users.json
+package-lock.json
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db

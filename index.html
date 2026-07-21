@@ -4,10 +4,23 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>I CAN School · Safeguarding</title>
+<!--
+  CSP note: this is a single static HTML file with one large inline script block
+  and no build/templating step, so script-src can't drop 'unsafe-inline'
+  without a nonce source we don't have. What this policy does buy: script-src
+  is host-allowlisted to exactly the pinned CDNs below (an attacker can't get
+  a *different* script host to load even via an injected <script src>), and
+  connect-src is locked to the Apps Script domain so stolen/forged JS can't
+  exfiltrate data elsewhere. Tailwind's Play CDN and Google Fonts are excluded
+  from SRI below — neither serves a single stable-hashable file (Play CDN is
+  a runtime compiler; Fonts serves UA-varying CSS) — documented, not missed.
+-->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://script.google.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/lucide@latest"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://unpkg.com/lucide@0.462.0/dist/umd/lucide.js" integrity="sha384-WBRt9V/J/erVtkEuP91HUFRv9MvHzFiFOp4/zTDp4xkcMG7aOeIv2asTV4yxFLWa" crossorigin="anonymous"></script>
+<!-- Chart.js is loaded lazily (see loadChartJs()) only when a chart is first
+     rendered, rather than eagerly here — see index.html perf notes. -->
 <script>
 tailwind.config = {
   theme: { extend: {
@@ -141,6 +154,7 @@ tailwind.config = {
     <button data-nav="dashboard" class="nav-btn nav-active w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-600"><i data-lucide="layout-dashboard" class="nav-ico w-[18px] h-[18px] text-slate-400"></i>Dashboard</button>
     <button data-nav="concerns" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-dim"><span class="flex items-center gap-3"><i data-lucide="folder-open" class="nav-ico w-[18px] h-[18px] text-slate-400"></i>Concerns</span><span id="navConcernCount" class="text-[10px] font-bold bg-dim text-slate-500 px-2 py-0.5 rounded-full">0</span></button>
     <button data-nav="students" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-dim"><i data-lucide="users-round" class="nav-ico w-[18px] h-[18px] text-slate-400"></i>Students</button>
+    <button data-nav="families" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-dim"><i data-lucide="git-branch" class="nav-ico w-[18px] h-[18px] text-slate-400"></i>Families</button>
     <button data-nav="tasks" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-dim"><span class="flex items-center gap-3"><i data-lucide="list-checks" class="nav-ico w-[18px] h-[18px] text-slate-400"></i>Actions</span><span id="navTaskCount" class="text-[10px] font-bold bg-medSoft text-med px-2 py-0.5 rounded-full hidden">0</span></button>
     <button data-nav="analytics" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-dim"><i data-lucide="trending-up" class="nav-ico w-[18px] h-[18px] text-slate-400"></i>Analytics</button>
     <button data-nav="audit" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-dim"><i data-lucide="scroll-text" class="nav-ico w-[18px] h-[18px] text-slate-400"></i>Audit log</button>
@@ -242,14 +256,14 @@ tailwind.config = {
     <div class="flex flex-col lg:flex-row lg:items-center gap-3">
       <div class="relative flex-1">
         <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
-        <input id="conSearch" oninput="renderConcerns()" placeholder="Search student, category, reporter…" class="w-full h-12 pl-11 pr-4 rounded-2xl bg-dim border border-transparent text-sm font-medium">
+        <input id="conSearch" oninput="onConcernsFilterChangeDebounced()" placeholder="Search student, category, reporter…" class="w-full h-12 pl-11 pr-4 rounded-2xl bg-dim border border-transparent text-sm font-medium">
       </div>
       <div class="grid grid-cols-2 sm:flex gap-2.5">
-        <select id="conCategory" onchange="renderConcerns()" class="h-12 px-3 rounded-2xl bg-dim border border-transparent text-sm font-bold text-slate-700"><option value="All">All categories</option></select>
-        <select id="conRisk" onchange="renderConcerns()" class="h-12 px-3 rounded-2xl bg-dim border border-transparent text-sm font-bold text-slate-700">
+        <select id="conCategory" onchange="onConcernsFilterChange()" class="h-12 px-3 rounded-2xl bg-dim border border-transparent text-sm font-bold text-slate-700"><option value="All">All categories</option></select>
+        <select id="conRisk" onchange="onConcernsFilterChange()" class="h-12 px-3 rounded-2xl bg-dim border border-transparent text-sm font-bold text-slate-700">
           <option value="All">All risk</option><option>Critical</option><option>High</option><option>Medium</option><option>Low</option>
         </select>
-        <select id="conStatus" onchange="renderConcerns()" class="h-12 px-3 rounded-2xl bg-dim border border-transparent text-sm font-bold text-slate-700">
+        <select id="conStatus" onchange="onConcernsFilterChange()" class="h-12 px-3 rounded-2xl bg-dim border border-transparent text-sm font-bold text-slate-700">
           <option value="Active">Active cases</option><option value="All">All statuses</option><option>New</option><option>In progress</option><option>Monitoring</option><option>Referred</option><option>Resolved</option>
         </select>
         <button onclick="exportCSV()" class="h-12 px-4 rounded-2xl bg-card border border-line text-sm font-bold text-slate-600 hover:bg-dim flex items-center justify-center gap-2"><i data-lucide="download" class="w-4 h-4"></i><span class="hidden sm:inline">Export</span></button>
@@ -272,9 +286,9 @@ tailwind.config = {
   <div class="bg-card rounded-4xl border border-line shadow-soft p-4 sm:p-5 flex flex-col sm:flex-row gap-3">
     <div class="relative flex-1">
       <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
-      <input id="stuSearch" oninput="renderStudents()" placeholder="Search students by name or form…" class="w-full h-12 pl-11 pr-4 rounded-2xl bg-dim border border-transparent text-sm font-medium">
+      <input id="stuSearch" oninput="onStudentsFilterChangeDebounced()" placeholder="Search students by name or form…" class="w-full h-12 pl-11 pr-4 rounded-2xl bg-dim border border-transparent text-sm font-medium">
     </div>
-    <select id="stuFlag" onchange="renderStudents()" class="h-12 px-3 rounded-2xl bg-dim border border-transparent text-sm font-bold text-slate-700">
+    <select id="stuFlag" onchange="onStudentsFilterChange()" class="h-12 px-3 rounded-2xl bg-dim border border-transparent text-sm font-bold text-slate-700">
       <option value="All">All students</option><option value="risk">With active concern</option>
       <option value="CP">Child Protection plan</option><option value="CIN">Child in Need</option><option value="LAC">Looked-after</option>
       <option value="SEN">SEND</option><option value="YC">Young Carer</option><option value="EAL">EAL</option><option value="PP">Pupil Premium</option>
@@ -522,6 +536,54 @@ tailwind.config = {
     <div id="auditList" class="divide-y divide-line max-h-[640px] overflow-y-auto scroll-thin"></div>
   </div>
 </section>
+
+<!-- ===================== FULL CHRONOLOGY (Work Item 4) ===================== -->
+<section data-view="chronology" class="hidden fade space-y-4">
+  <div class="bg-card rounded-4xl border border-line shadow-soft overflow-hidden">
+    <div class="px-5 py-4 border-b border-line flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3 min-w-0">
+        <button onclick="go('students')" class="w-9 h-9 shrink-0 grid place-items-center rounded-full hover:bg-dim text-slate-500"><i data-lucide="arrow-left" class="w-4.5 h-4.5"></i></button>
+        <div class="min-w-0">
+          <h3 id="chrStudentName" class="font-display font-bold text-base text-ink truncate">—</h3>
+          <p id="chrStudentMeta" class="text-xs text-slate-400 font-medium truncate">—</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span id="chrCount" class="text-[11px] font-bold text-slate-400"></span>
+        <button onclick="exportChronologyCSV()" class="h-10 px-4 rounded-full bg-dim hover:bg-line text-slate-600 text-xs font-bold flex items-center gap-2"><i data-lucide="download" class="w-3.5 h-3.5"></i>CSV</button>
+        <button onclick="printChronology()" class="h-10 px-4 rounded-full bg-brand hover:bg-brandDark text-white text-xs font-bold flex items-center gap-2"><i data-lucide="printer" class="w-3.5 h-3.5"></i>Print / PDF</button>
+      </div>
+    </div>
+    <div class="px-5 py-3 border-b border-line flex flex-wrap items-center gap-2 bg-dim/30">
+      <select id="chrType" onchange="onChronologyFilterChange()" class="h-10 px-3 rounded-xl bg-card border border-line text-xs font-bold text-slate-700">
+        <option value="All">All types</option>
+        <option value="concern">Concern</option>
+        <option value="note">Note</option>
+        <option value="status">Status change</option>
+        <option value="agency">Agency referral</option>
+        <option value="assignee">Reassigned</option>
+        <option value="action">Action</option>
+        <option value="bodymap">Body map</option>
+      </select>
+      <label class="text-[11px] font-bold text-slate-400">From <input id="chrFrom" type="date" onchange="onChronologyFilterChange()" class="h-10 ml-1 px-2 rounded-xl bg-card border border-line text-xs font-semibold"></label>
+      <label class="text-[11px] font-bold text-slate-400">To <input id="chrTo" type="date" onchange="onChronologyFilterChange()" class="h-10 ml-1 px-2 rounded-xl bg-card border border-line text-xs font-semibold"></label>
+    </div>
+    <div class="p-5 sm:p-7">
+      <div id="chrList" class="relative timeline pl-8 space-y-5"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FAMILIES (Work Item 5) ===================== -->
+<section data-view="families" class="hidden fade space-y-4">
+  <div class="bg-card rounded-4xl border border-line shadow-soft overflow-hidden">
+    <div class="px-5 py-4 border-b border-line flex items-center justify-between gap-3">
+      <div><h3 class="font-display font-bold text-base text-ink">Families</h3><p class="text-xs text-slate-400 font-medium">Siblings grouped together, with a combined open-concern picture</p></div>
+      <button onclick="openFamilyEditor()" class="h-10 px-4 rounded-full bg-brand hover:bg-brandDark text-white text-xs font-bold flex items-center gap-2"><i data-lucide="plus" class="w-3.5 h-3.5"></i>New family</button>
+    </div>
+    <div id="familiesList" class="divide-y divide-line"></div>
+  </div>
+</section>
 </main>
 
 <!-- ===================== MOBILE BOTTOM NAV ===================== -->
@@ -669,6 +731,11 @@ tailwind.config = {
           <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Multi-agency referrals</h4>
             <div class="space-y-2" id="caseAgencies"></div>
           </div>
+          <div>
+            <div class="flex items-center justify-between mb-3"><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Linked cases</h4>
+            <button onclick="openLinkCasePicker()" class="text-xs font-bold text-brand hover:text-brandDark flex items-center gap-1"><i data-lucide="link" class="w-3.5 h-3.5"></i>Link</button></div>
+            <div id="caseLinked" class="space-y-2"></div>
+          </div>
           <div id="caseSendWrap" class="hidden">
             <div class="flex items-center justify-between mb-3"><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">SEND status</h4>
             <span id="caseSendCurrent" class="text-[10px] font-bold px-2 py-0.5 rounded-md"></span></div>
@@ -716,7 +783,10 @@ tailwind.config = {
         <button id="stuDeleteBtn" onclick="deleteStudent()" class="hidden w-full h-10 rounded-full text-xs font-bold text-crit hover:bg-critSoft flex items-center justify-center gap-1.5"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i>Delete student from register</button>
       </div>
       <div class="md:col-span-3 p-5 sm:p-7 bg-surface">
-        <h4 class="text-sm font-display font-bold text-ink mb-5 flex items-center gap-2"><i data-lucide="history" class="w-4 h-4 text-brand"></i>Complete chronology</h4>
+        <div class="flex items-center justify-between mb-5">
+          <h4 class="text-sm font-display font-bold text-ink flex items-center gap-2"><i data-lucide="history" class="w-4 h-4 text-brand"></i>Complete chronology</h4>
+          <button onclick="openChronology(activeStudentId)" class="h-9 px-3.5 rounded-full bg-dim hover:bg-line text-slate-600 text-xs font-bold flex items-center gap-1.5"><i data-lucide="scroll-text" class="w-3.5 h-3.5"></i>Full chronology</button>
+        </div>
         <div id="stuTimeline" class="relative timeline pl-8 space-y-5"></div>
       </div>
     </div>
@@ -755,11 +825,6 @@ tailwind.config = {
               <pre id="scriptCode" class="text-[10px] leading-relaxed text-emerald-300 font-mono overflow-x-auto max-h-44 whitespace-pre"></pre>
             </div>
           </details>
-        </div>
-        <div class="space-y-2 pt-1">
-          <label class="block text-xs font-bold text-slate-600">API Base URL (for GitHub/deployed frontend)</label>
-          <input id="setApiBase" placeholder="https://your-backend.onrender.com" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-xs font-mono">
-          <p class="text-[11px] text-slate-400 font-medium">Leave blank for local same-origin API. Set this when frontend and backend are hosted separately.</p>
         </div>
       </div>
       <!-- demo reset removed in production build -->
@@ -804,6 +869,19 @@ tailwind.config = {
   </div>
 </div>
 
+<!-- ===================== IDLE TIMEOUT WARNING ===================== -->
+<div id="idleWarnModal" class="fixed inset-0 z-[130] hidden bg-ink/60 backdrop-blur-sm flex items-center justify-center p-4 opacity-0 transition-opacity">
+  <div class="bg-surface w-full max-w-sm rounded-4xl shadow-lift p-6 pop text-center">
+    <div class="w-12 h-12 rounded-full bg-medSoft text-med grid place-items-center mx-auto mb-3"><i data-lucide="clock" class="w-6 h-6"></i></div>
+    <h3 class="font-display font-bold text-ink mb-1.5">Still there?</h3>
+    <p class="text-sm text-slate-500 font-medium mb-4">For your security, you'll be signed out in <span id="idleCountdown" class="font-bold text-ink">2m</span> due to inactivity.</p>
+    <div class="flex justify-center gap-2">
+      <button onclick="signOut()" class="h-11 px-5 rounded-full text-sm font-bold text-slate-600 hover:bg-dim">Sign out now</button>
+      <button onclick="staySignedIn()" class="h-11 px-6 rounded-full bg-brand hover:bg-brandDark text-white text-sm font-bold">Stay signed in</button>
+    </div>
+  </div>
+</div>
+
 <!-- Action add mini-modal -->
 <div id="actionModal" onclick="if(event.target===this)closeModal('actionModal')" class="fixed inset-0 z-[110] hidden bg-ink/50 backdrop-blur-sm flex items-center justify-center p-4 opacity-0 transition-opacity">
   <div class="bg-surface w-full max-w-md rounded-4xl shadow-lift p-6 pop">
@@ -816,6 +894,37 @@ tailwind.config = {
     </div>
     <div class="flex justify-end gap-2"><button onclick="closeModal('actionModal')" class="h-11 px-5 rounded-full text-sm font-bold text-slate-600 hover:bg-dim">Cancel</button>
     <button onclick="saveAction()" class="h-11 px-6 rounded-full bg-brand hover:bg-brandDark text-white text-sm font-bold">Add action</button></div>
+  </div>
+</div>
+
+<!-- ===================== LINK CASE MODAL (Work Item 5) ===================== -->
+<div id="linkCaseModal" onclick="if(event.target===this)closeModal('linkCaseModal')" class="fixed inset-0 z-[110] hidden bg-ink/50 backdrop-blur-sm flex items-center justify-center p-4 opacity-0 transition-opacity">
+  <div class="bg-surface w-full max-w-lg rounded-4xl shadow-lift p-6 pop max-h-[85vh] flex flex-col">
+    <h3 class="font-display font-bold text-ink mb-4">Link a related case</h3>
+    <input id="linkCaseSearch" oninput="renderLinkCasePicker()" placeholder="Search by student, category…" class="w-full h-11 px-3 rounded-xl bg-card border border-line text-sm font-medium mb-3">
+    <div id="linkCaseList" class="flex-1 overflow-y-auto scroll-thin border border-line rounded-xl divide-y divide-line"></div>
+    <div class="flex justify-end gap-2 mt-4">
+      <button onclick="closeModal('linkCaseModal')" class="h-11 px-5 rounded-full text-sm font-bold text-slate-600 hover:bg-dim">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== FAMILY CREATE / EDIT MODAL (Work Item 5) ===================== -->
+<div id="familyModal" onclick="if(event.target===this)closeModal('familyModal')" class="fixed inset-0 z-[110] hidden bg-ink/50 backdrop-blur-sm flex items-center justify-center p-4 opacity-0 transition-opacity">
+  <div class="bg-surface w-full max-w-lg rounded-4xl shadow-lift p-6 pop max-h-[90vh] flex flex-col">
+    <h3 id="familyModalTitle" class="font-display font-bold text-ink mb-4">New family</h3>
+    <input type="hidden" id="famEditId">
+    <label class="block text-xs font-bold text-slate-600 mb-1.5">Family name</label>
+    <input id="famName" placeholder="e.g. The Smith family" class="w-full h-11 px-3 rounded-xl bg-card border border-line text-sm font-medium mb-3">
+    <label class="block text-xs font-bold text-slate-600 mb-1.5">Notes (optional)</label>
+    <textarea id="famNotes" rows="2" class="w-full px-3 py-2 rounded-xl bg-card border border-line text-sm font-medium mb-3 resize-none"></textarea>
+    <label class="block text-xs font-bold text-slate-600 mb-1.5">Students in this family</label>
+    <input id="famStudentSearch" oninput="renderFamilyStudentPicker()" placeholder="Search students…" class="w-full h-10 px-3 rounded-xl bg-card border border-line text-xs font-medium mb-2">
+    <div id="famStudentPicker" class="flex-1 overflow-y-auto scroll-thin border border-line rounded-xl divide-y divide-line max-h-52 mb-4"></div>
+    <div class="flex justify-end gap-2">
+      <button onclick="closeModal('familyModal')" class="h-11 px-5 rounded-full text-sm font-bold text-slate-600 hover:bg-dim">Cancel</button>
+      <button onclick="saveFamily()" class="h-11 px-6 rounded-full bg-brand hover:bg-brandDark text-white text-sm font-bold">Save</button>
+    </div>
   </div>
 </div>
 
@@ -1043,11 +1152,13 @@ const TEAM = [];
 
 // ---------- App state ----------
 let DB = { students:[], cases:[], audit:[] };
-let ME = { name:'', role:'Teacher', userId:'', code:'' };
+// ME.code only ever holds a code transiently during the login/change-password
+// round trip — it is never persisted (see persistSession/checkSavedAuth).
+// ME.token is the opaque session token used for every authenticated call.
+let ME = { name:'', role:'Teacher', userId:'', code:'', token:'' };
 let CURRENT_VIEW = 'dashboard';
 let SOURCE = 'live';
 let SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzUyMJIS4RI639eHS21JFba6ZnFjjvIp9bEEa4Qg9uhxc2R4zm4o6KYgwi_FM0e0SUonw/exec';
-let API_BASE_URL = '';
 let conView = 'board';
 let taskFilter = 'open';
 let activeCaseId = null;
@@ -1071,8 +1182,6 @@ const caseInPhase = (c, phase)=> phase==='Secondary' ? c.department==='Secondary
 // full whole-school-report access, which stays restricted to DSL/Principal.
 const CAN_LOG_SEND = ()=> ME.role==='SENDCO' || ME.role==='Lead DSL' || ME.role==='Deputy DSL' || ME.role==='Principal';
 const IS_SERVER  = ()=> window.location.protocol !== 'file:';
-const IS_LOCALHOST = ()=> ['localhost','127.0.0.1'].includes(window.location.hostname);
-const USE_NODE_API = ()=> !!getApiBase() || IS_LOCALHOST();
 const CAN_USE_APPS_SCRIPT = ()=> SOURCE==='live' && !!SCRIPT_URL;
 
 // ---------- tiny helpers ----------
@@ -1094,14 +1203,21 @@ const fmtTime = d => new Date(d).toLocaleTimeString('en-GB',{hour:'2-digit',minu
 const daysBetween = (a,b) => Math.round((new Date(b)-new Date(a))/86400000);
 const initials = n => n.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
 const isOpen = c => c.status !== 'Resolved';
-const normalizeApiBase = (url='') => String(url||'').trim().replace(/\/+$/,'');
-const getApiBase = () => normalizeApiBase(API_BASE_URL);
-const apiUrl = (path) => {
-  const p = path.startsWith('/') ? path : `/${path}`;
-  const base = getApiBase();
-  return base ? `${base}${p}` : p;
-};
 function icons(){ if(window.lucide) lucide.createIcons(); }
+function debounce(fn, wait=200){
+  let t;
+  return function(...args){ clearTimeout(t); t=setTimeout(()=>fn.apply(this,args), wait); };
+}
+// ---------- List paging (concerns/students/tasks can run into the hundreds;
+// rendering all of them on every keystroke is the actual cost, not the fetch) ----------
+const LIST_PAGE_SIZE = 50;
+let concernsVisibleCount = LIST_PAGE_SIZE;
+let studentsVisibleCount = LIST_PAGE_SIZE;
+let tasksVisibleCount = LIST_PAGE_SIZE;
+function loadMoreControl(remaining, onClick){
+  if(remaining<=0) return '';
+  return `<button onclick="${onClick}" class="w-full mt-3 h-11 rounded-2xl border border-dashed border-line text-xs font-bold text-slate-500 hover:border-brand hover:text-brand transition-colors">Show ${Math.min(remaining, LIST_PAGE_SIZE)} more (${remaining} left)</button>`;
+}
 
 function toast(msg, type='success'){
   const map = { success:['check-circle-2','bg-brand'], warning:['alert-circle','bg-med'], error:['alert-triangle','bg-crit'], info:['info','bg-ink'] };
@@ -1176,7 +1292,6 @@ function loadPrefs(){
   ME.role = LS.get('ics_role') || ME.role;
   SOURCE  = LS.get('ics_source') || 'live';
   SCRIPT_URL = LS.get('ics_url') || SCRIPT_URL;
-  API_BASE_URL = normalizeApiBase(LS.get('ics_api_base') || '');
 }
 
 // ---------- Audit ----------
@@ -1250,7 +1365,9 @@ const VIEW_META = {
   audit:['Audit log','Immutable record of activity'],
   'teacher-home':['Report a Concern','Submit concerns to the DSL safeguarding team'],
   users:['User management','Create access codes, edit profiles and manage access'],
-  'send-report':['SEND & Safeguarding Dashboard','Whole-school monthly overview for Principal & DSL']
+  'send-report':['SEND & Safeguarding Dashboard','Whole-school monthly overview for Principal & DSL'],
+  chronology:['Full Chronology','Complete date-sorted history for one student'],
+  families:['Families','Siblings grouped together with a combined risk picture']
 };
 function go(view){
   // Permission checks
@@ -1265,6 +1382,12 @@ function go(view){
     return;
   }
   
+  // Fresh visit to a list view starts back at page 1 — a filter change or
+  // data mutation while already on the view doesn't (see loadMore* / on*FilterChange).
+  if(view==='concerns') concernsVisibleCount = LIST_PAGE_SIZE;
+  if(view==='students') studentsVisibleCount = LIST_PAGE_SIZE;
+  if(view==='tasks') tasksVisibleCount = LIST_PAGE_SIZE;
+
   CURRENT_VIEW = view;
   document.querySelectorAll('[data-view]').forEach(s=> s.classList.toggle('hidden', s.dataset.view!==view));
   document.querySelectorAll('.nav-btn').forEach(b=>{
@@ -1298,6 +1421,8 @@ function renderCurrentView(){
   else if(view==='teacher-home') renderTeacherHome();
   else if(view==='users') renderUsers();
   else if(view==='send-report') renderSendReport();
+  else if(view==='chronology') renderChronology();
+  else if(view==='families') renderFamilies();
 }
 
 // ---------- Settings / source ----------
@@ -1309,7 +1434,6 @@ function setSource(s){
 function openSettingsModal(){
   if($('setName')) $('setName').value=ME.name;
   if($('setRole')) $('setRole').value=ME.role;
-  if($('setApiBase')) $('setApiBase').value=API_BASE_URL;
   openModal('settingsModal');
 }
 async function saveSettings(){
@@ -1325,7 +1449,7 @@ async function saveSettings(){
     const firstName = parts.shift() || newName;
     const lastName = parts.join(' ') || firstName;
     try{
-      const res = await scriptGet('updateOwnProfile', { code: ME.code, firstName, lastName });
+      const res = await scriptCall('updateOwnProfile', { firstName, lastName });
       if(!res.ok){ toast(res.error || 'Could not save name change', 'error'); return; }
     }catch(e){ toast('Could not save name change — check your connection', 'error'); return; }
   }
@@ -1333,11 +1457,8 @@ async function saveSettings(){
   ME.name = newName;
   ME.role = newRole;
   SCRIPT_URL=$('setUrl').value.trim();
-  API_BASE_URL = normalizeApiBase($('setApiBase')?.value || '');
-  LS.set('ics_name',ME.name); LS.set('ics_role',ME.role);
   LS.set('ics_source',SOURCE); LS.set('ics_url',SCRIPT_URL);
-  LS.set('ics_api_base',API_BASE_URL);
-  LS.set('ics_auth', JSON.stringify({ name:ME.name, role:ME.role, userId:ME.userId, code:ME.code, expires:new Date(Date.now()+8*3600000).toISOString() }));
+  saveSessionStorage();
   paintUser(); applyRoleLayout(); closeModal('settingsModal');
   toast('Settings saved');
   if(SOURCE==='live' && SCRIPT_URL) syncData(); else { renderAll(); }
@@ -1368,24 +1489,17 @@ async function submitPasswordChange(){
   if(!isStrongPassword(next)){ toast('Use 12+ chars with upper, lower, number and symbol','warning'); return; }
 
   try{
-    let data;
-    if(CAN_USE_APPS_SCRIPT()){
-      data = await scriptGet('changeOwnCode', { currentCode:current, newCode:next });
-    } else {
+    if(!CAN_USE_APPS_SCRIPT()){
       toast('Password change is available in live Apps Script mode','warning');
       return;
     }
+    const data = await scriptCall('changeOwnCode', { currentCode:current, newCode:next });
 
     if(!data || !data.ok){ toast((data&&data.error)||'Password update failed','error'); return; }
+    // The code itself is never persisted (only the session token is) — this
+    // keeps ME.code in sync in-memory in case anything in this tab still
+    // references it before the next login.
     ME.code = next;
-    const raw=LS.get('ics_auth');
-    if(raw){
-      try{
-        const s=JSON.parse(raw);
-        s.code = next;
-        LS.set('ics_auth', JSON.stringify(s));
-      }catch(_e){}
-    }
     closeModal('changePwdModal');
     toast('Password updated successfully','success');
   }catch(e){
@@ -1404,13 +1518,20 @@ function safeDate(v){
   const d = new Date(v);
   return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 }
+// DATA_VERSION tracks the server's PropertiesService write counter (bumped
+// by every case/user/SEND/family write). checkForUpdatesAndSync() compares
+// against it before doing a full re-fetch, so repeated navigation/boot don't
+// re-download unchanged data — only an actual change on the server does.
+let DATA_VERSION = 0;
+let STUDENT_META = {}; // studentId -> { familyId, notes } — see saveStudentMeta / Work Item 5
+let FAMILIES = []; // { familyId, familyName, studentIds[], notes } — see loadFamilies / Work Item 5
+
 async function syncData(){
   if(SOURCE!=='live' || !SCRIPT_URL){ renderAll(); toast('Refreshed','info'); return; }
   const ic=$('syncIcon'); ic.classList.add('animate-spin');
   try{
-    const res=await fetch(SCRIPT_URL+'?action=getCases');
-    const data=JSON.parse(await res.text());
-    if(data.status!=='success') throw new Error(data.message||'Sync failed');
+    const data = await scriptCall('getCases', {});
+    if(!data.ok || data.status!=='success') throw new Error(data.error||data.message||'Sync failed');
     DB.cases=(data.data||[]).map(r=>{
       const p = r.payload || {};
       return {
@@ -1435,19 +1556,55 @@ async function syncData(){
         agencies: Array.isArray(p.agencies) ? p.agencies : (r.agencies ? String(r.agencies).split(',').filter(Boolean) : []),
         bodyMap: Array.isArray(p.bodyMap) ? p.bodyMap : (Array.isArray(r.bodyMap) ? r.bodyMap : []),
         timeline: Array.isArray(p.timeline) ? p.timeline : (Array.isArray(r.timeline) ? r.timeline : []),
-        actions: Array.isArray(p.actions) ? p.actions : (Array.isArray(r.actions) ? r.actions : [])
+        actions: Array.isArray(p.actions) ? p.actions : (Array.isArray(r.actions) ? r.actions : []),
+        linkedCaseIds: Array.isArray(p.linkedCaseIds) ? p.linkedCaseIds : (Array.isArray(r.linkedCaseIds) ? r.linkedCaseIds : [])
       };
     });
     rebuildStudentsFromCases();
+    await loadStudentMeta();
+    if(typeof data.version === 'number') DATA_VERSION = data.version;
     persist();
     renderAll(); toast('Synced with Google Sheet');
   }catch(e){ toast(e.message,'error'); }
   finally{ ic.classList.remove('animate-spin'); }
 }
+// Boot-time warm start: only pay for a full re-fetch if the server's data
+// actually changed since we last cached it locally.
+async function checkForUpdatesAndSync(){
+  if(SOURCE!=='live' || !SCRIPT_URL) return;
+  try{
+    const v = await scriptCall('getVersion', {});
+    if(v && v.ok && DB.cases.length && v.version === DATA_VERSION){ return; }
+    await syncData();
+  }catch(e){ await syncData(); }
+}
 function rebuildStudentsFromCases(){
   const map={};
   DB.cases.forEach(c=>{ if(!map[c.studentId]) map[c.studentId]={id:c.studentId,name:c.studentName,year:c.year,form:'',keyAdult:c.assignee||'',flags:[]}; });
   DB.students=Object.values(map);
+  applyStudentMeta();
+}
+// Merges familyId/notes (durable, stored server-side in the students sheet —
+// see Work Item 5) onto whatever DB.students rebuildStudentsFromCases() just
+// derived from case rows. Without this, familyId would be wiped on every
+// sync, since students themselves have no durable record of their own.
+function applyStudentMeta(){
+  DB.students.forEach(s=>{
+    const meta = STUDENT_META[s.id];
+    s.familyId = meta ? meta.familyId : (s.familyId||'');
+    s.studentNotes = meta ? meta.notes : (s.studentNotes||'');
+  });
+}
+async function loadStudentMeta(){
+  if(!CAN_USE_APPS_SCRIPT()) return;
+  try{
+    const res = await scriptCall('listStudentMeta', {});
+    if(res && res.ok){
+      STUDENT_META = {};
+      (res.data||[]).forEach(m=>{ STUDENT_META[m.id] = m; });
+      applyStudentMeta();
+    }
+  }catch(e){ /* non-fatal — family grouping just won't show until next sync */ }
 }
 </script>
 <script>
@@ -1591,16 +1748,21 @@ function caseCard(c){
     </div>
   </div>`;
 }
+function onConcernsFilterChange(){ concernsVisibleCount = LIST_PAGE_SIZE; renderConcerns(); }
+const onConcernsFilterChangeDebounced = debounce(onConcernsFilterChange, 200);
+function loadMoreConcerns(){ concernsVisibleCount += LIST_PAGE_SIZE; renderConcerns(); }
 function renderConcerns(){
-  const list=filteredConcerns();
-  $('conCount').textContent=list.length;
+  const full=filteredConcerns();
+  $('conCount').textContent=full.length;
+  const list = full.slice(0, concernsVisibleCount);
+  const remaining = full.length - list.length;
   if(conView==='board'){
     const cols=[['New / In progress',c=>c.status==='New'||c.status==='In progress'],['Monitoring / Referred',c=>c.status==='Monitoring'||c.status==='Referred'],['Resolved',c=>c.status==='Resolved']];
     $('conBoard').innerHTML = cols.map(([title,fn])=>{
       const items=list.filter(fn);
       return `<div class="space-y-3"><div class="flex items-center justify-between px-1"><h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">${title}</h3><span class="text-[10px] font-bold bg-dim text-slate-500 px-2 py-0.5 rounded-full">${items.length}</span></div>
       <div class="space-y-3">${items.map(caseCard).join('')||`<div class="bg-dim/40 rounded-3xl border border-dashed border-line p-6 text-center text-xs font-semibold text-slate-400">Nothing here</div>`}</div></div>`;
-    }).join('');
+    }).join('') + loadMoreControl(remaining, 'loadMoreConcerns()');
   } else {
     $('conList').innerHTML = `<table class="w-full text-sm"><thead><tr class="text-left text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-line">
       <th class="px-4 py-3">Student</th><th class="px-4 py-3 hidden sm:table-cell">Category</th><th class="px-4 py-3">Risk</th><th class="px-4 py-3 hidden md:table-cell">Status</th><th class="px-4 py-3 hidden lg:table-cell">Assignee</th><th class="px-4 py-3 hidden md:table-cell">Logged</th></tr></thead>
@@ -1610,18 +1772,21 @@ function renderConcerns(){
         <td class="px-4 py-3">${riskBadge(c.risk)}</td>
         <td class="px-4 py-3 hidden md:table-cell">${statusPill(c.status)}</td>
         <td class="px-4 py-3 hidden lg:table-cell text-slate-500 font-medium">${esc((Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(s=>s.trim()).filter(Boolean)).join(', ')||'—')}</td>
-        <td class="px-4 py-3 hidden md:table-cell text-slate-400 font-medium">${fmtShort(c.date)}</td></tr>`).join('')||`<tr><td colspan="6" class="px-4 py-10 text-center text-slate-400 font-semibold">No concerns match your filters.</td></tr>`}</tbody></table>`;
+        <td class="px-4 py-3 hidden md:table-cell text-slate-400 font-medium">${fmtShort(c.date)}</td></tr>`).join('')||`<tr><td colspan="6" class="px-4 py-10 text-center text-slate-400 font-semibold">No concerns match your filters.</td></tr>`}</tbody></table>${loadMoreControl(remaining, 'loadMoreConcerns()')}`;
   }
   icons();
 }
 
 // ---------- STUDENTS ----------
+function onStudentsFilterChange(){ studentsVisibleCount = LIST_PAGE_SIZE; renderStudents(); }
+const onStudentsFilterChangeDebounced = debounce(onStudentsFilterChange, 200);
+function loadMoreStudents(){ studentsVisibleCount += LIST_PAGE_SIZE; renderStudents(); }
 function renderStudents(){
   const q=($('stuSearch')?.value||'').toLowerCase();
   const flag=$('stuFlag')?.value||'All';
   const isDSL = IS_ADMIN();
   const myName = (ME.name||'').toLowerCase().trim();
-  let list=DB.students.filter(s=>{
+  let full=DB.students.filter(s=>{
     if(q && !`${s.name} ${s.form} ${s.year}`.toLowerCase().includes(q)) return false;
     if(flag==='risk'){ if(!casesForStudent(s.id).some(isOpen)) return false; }
     else if(flag!=='All'){ if(!(s.flags||[]).includes(flag)) return false; }
@@ -1640,34 +1805,39 @@ function renderStudents(){
     }
     return true;
   }).sort((a,b)=> RISK[safeRisk(studentRisk(b.id).color==='crit'?'Critical':studentRisk(b.id).color==='high'?'High':studentRisk(b.id).color==='med'?'Medium':'Low')].rank - RISK[safeRisk(studentRisk(a.id).color==='crit'?'Critical':studentRisk(a.id).color==='high'?'High':studentRisk(a.id).color==='med'?'Medium':'Low')].rank);
-  $('studentGrid').innerHTML = list.map(s=>{
+  const list = full.slice(0, studentsVisibleCount);
+  const remaining = full.length - list.length;
+  $('studentGrid').innerHTML = (list.map(s=>{
     const cs=casesForStudent(s.id); const open=cs.filter(isOpen).length; const r=studentRisk(s.id);
     return `<button onclick="openStudent('${s.id}')" class="text-left bg-card rounded-3xl border border-line shadow-soft p-4 hover:shadow-lift transition-shadow">
       <div class="flex items-start justify-between mb-3"><div class="flex items-center gap-3">${avatar(s.name,'w-11 h-11')}
         <div><div class="font-bold text-ink">${esc(s.name)}</div><div class="text-[11px] font-semibold text-slate-400">${esc(s.year)} · ${esc(s.form)}</div></div></div>
         <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-${r.color}Soft text-${r.color}">${r.label}</span></div>
-      <div class="flex flex-wrap gap-1.5 mb-3 min-h-[22px]">${(s.flags||[]).map(flagChip).join('')||'<span class="text-[11px] text-slate-300 font-medium">No flags</span>'}</div>
+      <div class="flex flex-wrap gap-1.5 mb-3 min-h-[22px]">${(s.flags||[]).map(flagChip).join('')||'<span class="text-[11px] text-slate-300 font-medium">No flags</span>'}${s.familyId?`<span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md bg-socialSoft text-social"><i data-lucide="git-branch" class="w-3 h-3"></i>${esc(familyNameById(s.familyId)||'Family')}</span>`:''}</div>
       <div class="flex items-center justify-between pt-2 border-t border-line text-[11px] font-semibold text-slate-400">
         <span>${cs.length} concern${cs.length!==1?'s':''}</span>${open?`<span class="text-crit">${open} open</span>`:'<span class="text-ok">all resolved</span>'}</div>
     </button>`;
-  }).join('') || emptyState('users-round','No students found','Try a different filter.');
+  }).join('') || emptyState('users-round','No students found','Try a different filter.')) + loadMoreControl(remaining, 'loadMoreStudents()');
   icons();
 }
 
 // ---------- TASKS ----------
-function setTaskFilter(f){ taskFilter=f;
+function setTaskFilter(f){ taskFilter=f; tasksVisibleCount=LIST_PAGE_SIZE;
   document.querySelectorAll('.task-fbtn').forEach(b=> b.className=`task-fbtn px-4 py-2 rounded-full ${b.dataset.tfilter===f?'nav-active text-brandDark':'text-slate-500'}`);
   renderTasks();
 }
+function loadMoreTasks(){ tasksVisibleCount += LIST_PAGE_SIZE; renderTasks(); }
 function renderTasks(){
-  let acts=allActions();
-  if(taskFilter==='open') acts=acts.filter(a=>!a.done);
-  else if(taskFilter==='mine') acts=acts.filter(a=>!a.done && a.owner===ME.name);
-  else acts=acts.filter(a=>a.done);
-  acts.sort((a,b)=> (a.done?1:0)-(b.done?1:0) || new Date(a.due||0)-new Date(b.due||0));
-  const out=acts.filter(a=>!a.done).length;
+  let full=allActions();
+  if(taskFilter==='open') full=full.filter(a=>!a.done);
+  else if(taskFilter==='mine') full=full.filter(a=>!a.done && a.owner===ME.name);
+  else full=full.filter(a=>a.done);
+  full.sort((a,b)=> (a.done?1:0)-(b.done?1:0) || new Date(a.due||0)-new Date(b.due||0));
+  const out=full.filter(a=>!a.done).length;
   $('taskSummary').textContent = `${out} outstanding`;
-  $('taskList').innerHTML = acts.length? acts.map(a=>{
+  const acts = full.slice(0, tasksVisibleCount);
+  const remaining = full.length - acts.length;
+  $('taskList').innerHTML = (acts.length? acts.map(a=>{
     const od=!a.done && a.due && new Date(a.due)<today();
     return `<div class="bg-card rounded-2xl border ${od?'border-crit/30':'border-line'} shadow-soft p-4 flex items-center gap-3">
       <button onclick="toggleAction('${a.caseId}','${a.id}')" class="shrink-0"><i data-lucide="${a.done?'check-circle-2':'circle'}" class="w-6 h-6 ${a.done?'text-ok':'text-slate-300 hover:text-brand'}"></i></button>
@@ -1676,7 +1846,7 @@ function renderTasks(){
       <div class="text-right shrink-0"><div class="text-[11px] font-bold ${od?'text-crit':'text-slate-500'}">${a.due?fmtShort(a.due):'No date'}${od?' · overdue':''}</div>
       <div class="text-[10px] font-semibold text-slate-400 flex items-center gap-1 justify-end"><span class="w-4 h-4 rounded-full bg-dim grid place-items-center text-[8px] font-bold">${initials(a.owner||'?')}</span>${esc((a.owner||'').split(' ')[0])}</div></div>
     </div>`;
-  }).join('') : emptyState(taskFilter==='done'?'inbox':'party-popper', taskFilter==='done'?'No completed actions yet':'All actions complete','');
+  }).join('') : emptyState(taskFilter==='done'?'inbox':'party-popper', taskFilter==='done'?'No completed actions yet':'All actions complete','')) + loadMoreControl(remaining, 'loadMoreTasks()');
   icons();
 }
 function exportCSV(){
@@ -1842,7 +2012,7 @@ function submitConcern(){
     status:'New', description:$('rDesc').value.trim()||'No description provided.',
     location:$('rLocation').value.trim()||'—', reporter:reporterName,
     assignee:'', date:now,
-    agencies:[], actions:[], bodyMap:reportBodyMap.filter(m=>true),
+    agencies:[], actions:[], bodyMap:reportBodyMap.filter(m=>true), linkedCaseIds:[],
     timeline:[{time:now,author:reporterName,type:'log',text:'Concern logged.'}] };
   DB.cases.unshift(c);
   logAudit('Concern logged', `${cat} · ${s.name}`, c.reporter);
@@ -1851,15 +2021,14 @@ function submitConcern(){
   toast('Concern submitted to the DSL team');
   go('concerns');
 }
+// Case saves are optimistic: the local DB (+ localStorage persist()) is the
+// source of truth for the current session, and this pushes to the sheet in
+// the background. Routed through scriptCall (not fire-and-forget no-cors)
+// so an expired/invalid session is actually detected — a silent no-cors
+// failure would otherwise mean an edit never reaches the sheet at all.
 async function postLive(body){
-  try{
-    await fetch(SCRIPT_URL, {
-      method:'POST',
-      mode:'no-cors',
-      headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body:JSON.stringify(body)
-    });
-  }catch(e){}
+  try{ await scriptCall(body.action, body); }
+  catch(e){ /* background sync failure; local copy is unaffected */ }
 }
 
 // ---------- CASE detail ----------
@@ -1903,7 +2072,7 @@ function openCase(id){
   // meta
   $('caseMeta').innerHTML = [['Logged',fmtDate(c.date)+' '+fmtTime(c.date)],['Reported by',c.reporter],['Class',c.studentClass||'—'],['Department',c.department||'—'],['Location',c.location||'—'],['Reference',c.id.slice(0,8).toUpperCase()]]
     .map(([k2,v])=>`<div class="flex justify-between gap-2"><span class="text-slate-400 font-medium">${k2}</span><span class="text-ink font-semibold text-right">${esc(v)}</span></div>`).join('');
-  renderCaseActions(c); renderCaseTimeline(c);
+  renderCaseActions(c); renderCaseTimeline(c); renderCaseLinked(c);
   renderCaseSendStatus(c);
   openModal('caseModal'); icons();
 }
@@ -1941,7 +2110,7 @@ async function setCaseSendNeedArea(needArea){
     status: existing.status, needArea, notes: existing.notes || ''
   };
   try{
-    const res = await scriptGet('saveSendCase', { adminCode: ME.code, payload: JSON.stringify(payload) });
+    const res = await scriptCall('saveSendCase', { payload: JSON.stringify(payload) });
     if(!res.ok){ toast(res.error||'Could not update primary area of need','error'); return; }
     logAudit('SEND need area updated', `${sendNeedLabel(needArea)} · ${c.studentName}`, ME.name);
     sendCasesLoaded = false;
@@ -1960,7 +2129,7 @@ async function setCaseSendStatus(status){
     needArea: existing?.needArea || '', notes: existing?.notes || ''
   };
   try{
-    const res = await scriptGet('saveSendCase', { adminCode: ME.code, payload: JSON.stringify(payload) });
+    const res = await scriptCall('saveSendCase', { payload: JSON.stringify(payload) });
     if(!res.ok){ toast(res.error||'Could not update SEND status','error'); return; }
     logAudit('SEND case logged', `${sendStatusLabel(status)} · ${c.studentName}`, ME.name);
     sendCasesLoaded = false;
@@ -1975,7 +2144,7 @@ async function clearCaseSendStatus(){
   if(!existing) return;
   if(!confirm(`Remove ${c.studentName} from the SEND register?`)) return;
   try{
-    const res = await scriptGet('deleteSendCase', { adminCode: ME.code, id: existing.id });
+    const res = await scriptCall('deleteSendCase', { id: existing.id });
     if(!res.ok){ toast(res.error||'Could not update SEND status','error'); return; }
     sendCasesLoaded = false;
     toast('Removed from SEND register');
@@ -2002,6 +2171,65 @@ function renderCaseTimeline(c){
     <div class="text-sm text-slate-700 font-medium">${esc(e.text)}</div></div>`).join('');
   icons();
 }
+// ---------- LINKED CASES (Work Item 5) ----------
+function renderCaseLinked(c){
+  const el = $('caseLinked'); if(!el) return;
+  const ids = c.linkedCaseIds || [];
+  if(!ids.length){ el.innerHTML = '<p class="text-xs text-slate-400 font-medium italic">No linked cases yet.</p>'; return; }
+  el.innerHTML = ids.map(id=>{
+    const oc = DB.cases.find(x=>x.id===id);
+    if(!oc) return '';
+    return `<div class="w-full flex items-center justify-between gap-2 bg-card border border-line px-3 py-2 rounded-xl">
+      <button onclick="openCase('${oc.id}')" class="min-w-0 flex-1 text-left"><span class="font-bold text-ink text-xs">${esc(oc.studentName)}</span> <span class="text-slate-400 text-[11px] font-medium">· ${esc(oc.category)} · ${fmtShort(oc.date)}</span></button>
+      <button onclick="toggleLinkedCase('${oc.id}', false)" title="Unlink" class="w-7 h-7 shrink-0 rounded-full hover:bg-critSoft text-slate-400 hover:text-crit grid place-items-center"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
+    </div>`;
+  }).join('');
+  icons();
+}
+function openLinkCasePicker(){
+  const c = DB.cases.find(x=>x.id===activeCaseId); if(!c) return;
+  const search = $('linkCaseSearch'); if(search) search.value='';
+  renderLinkCasePicker();
+  openModal('linkCaseModal');
+}
+function renderLinkCasePicker(){
+  const c = DB.cases.find(x=>x.id===activeCaseId); if(!c) return;
+  const q = ($('linkCaseSearch')?.value||'').toLowerCase();
+  const linked = new Set(c.linkedCaseIds||[]);
+  const list = visibleCases().filter(x=> x.id!==c.id && (!q || `${x.studentName} ${x.category}`.toLowerCase().includes(q)))
+    .sort((a,b)=> new Date(b.date)-new Date(a.date)).slice(0,80);
+  $('linkCaseList').innerHTML = list.map(x=>{
+    const on = linked.has(x.id);
+    return `<label class="flex items-center gap-2.5 px-3 py-2.5 text-sm hover:bg-dim/40 cursor-pointer">
+      <input type="checkbox" ${on?'checked':''} onchange="toggleLinkedCase('${x.id}', this.checked)" class="w-4 h-4 rounded accent-brand shrink-0">
+      <span class="flex-1 min-w-0"><span class="font-bold text-ink">${esc(x.studentName)}</span> <span class="text-slate-400 font-medium">· ${esc(x.category)} · ${fmtShort(x.date)}</span></span>
+      ${riskBadge(x.risk)}
+    </label>`;
+  }).join('') || '<div class="px-3 py-8 text-center text-xs text-slate-400 font-semibold">No matching cases</div>';
+}
+// Links are stored on both sides (each case lists the other) so either
+// case's "Linked cases" panel shows the connection without a server-side join.
+function toggleLinkedCase(otherId, on){
+  const c = DB.cases.find(x=>x.id===activeCaseId); if(!c) return;
+  const oc = DB.cases.find(x=>x.id===otherId);
+  c.linkedCaseIds = c.linkedCaseIds || [];
+  if(on){
+    if(!c.linkedCaseIds.includes(otherId)) c.linkedCaseIds.push(otherId);
+    if(oc){ oc.linkedCaseIds = oc.linkedCaseIds||[]; if(!oc.linkedCaseIds.includes(c.id)) oc.linkedCaseIds.push(c.id); }
+  } else {
+    c.linkedCaseIds = c.linkedCaseIds.filter(id=>id!==otherId);
+    if(oc){ oc.linkedCaseIds = (oc.linkedCaseIds||[]).filter(id=>id!==c.id); }
+  }
+  logAudit('Case linked', `${c.studentName}${oc?' ↔ '+oc.studentName:''}`);
+  if(SOURCE==='live'&&SCRIPT_URL){
+    postLive({action:'syncCase', payload:c});
+    if(oc) postLive({action:'syncCase', payload:oc});
+  }
+  persist();
+  renderCaseLinked(c);
+  renderLinkCasePicker();
+}
+
 function changeStatus(){ const c=DB.cases.find(x=>x.id===activeCaseId); const v=$('caseStatus').value;
   c.status=v; c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'status',text:`Status changed to ${v}.`});
   logAudit('Status updated', `${c.studentName} → ${v}`); if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
@@ -2031,7 +2259,7 @@ function toggleAssignee(name){
   c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'note',text:assigneeText});
   logAudit('Case reassigned', `${c.studentName} → ${c.assignee||'Unassigned'}`);
   if(SOURCE==='live'&&SCRIPT_URL){ postLive({action:'syncCase',payload:c});
-    if(added && CAN_USE_APPS_SCRIPT()) scriptGet('notifyAssignee',{assignee:name,caseId:c.id,studentName:c.studentName,category:c.category,notifier:ME.name}).catch(()=>{});
+    if(added && CAN_USE_APPS_SCRIPT()) scriptCall('notifyAssignee',{assignee:name,caseId:c.id,studentName:c.studentName,category:c.category,notifier:ME.name}).catch(()=>{});
   }
   persist(); renderCaseAssignee(c); renderCaseTimeline(c); renderAll(); toast(added?'Assignee added — notification sent':'Assignee removed'); }
 function toggleAgency(key){ const c=DB.cases.find(x=>x.id===activeCaseId); c.agencies=c.agencies||[];
@@ -2049,7 +2277,7 @@ function saveAction(){ const t=$('newActionText').value.trim(); if(!t){ toast('D
   c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'action',text:`Action added: ${t}`});
   logAudit('Action created',`${c.studentName} · ${t}`);
   const actionOwner=$('newActionOwner').value;
-  if(SOURCE==='live'&&SCRIPT_URL){ postLive({action:'syncCase',payload:c}); if(actionOwner && actionOwner!==ME.name && CAN_USE_APPS_SCRIPT()) scriptGet('notifyActionOwner',{owner:actionOwner,caseId:c.id,studentName:c.studentName,actionText:t,notifier:ME.name}).catch(()=>{}); }
+  if(SOURCE==='live'&&SCRIPT_URL){ postLive({action:'syncCase',payload:c}); if(actionOwner && actionOwner!==ME.name && CAN_USE_APPS_SCRIPT()) scriptCall('notifyActionOwner',{owner:actionOwner,caseId:c.id,studentName:c.studentName,actionText:t,notifier:ME.name}).catch(()=>{}); }
   persist(); closeModal('actionModal'); renderCaseActions(c); renderCaseTimeline(c); renderAll(); toast('Action added'); }
 function toggleAction(caseId,actId){ const c=DB.cases.find(x=>x.id===caseId); const a=c.actions.find(x=>x.id===actId); a.done=!a.done;
   if(a.done) c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'action',text:`Completed: ${a.text}`});
@@ -2094,6 +2322,115 @@ function openStudent(id){
   openModal('studentModal'); icons();
 }
 function reportForCurrentStudent(){ const s=studentById(activeStudentId); closeModal('studentModal'); setTimeout(()=>openReport(s.name),220); }
+
+// ---------- FULL CHRONOLOGY (Work Item 4) ----------
+// A date-sorted merge of everything held on one child across all their
+// cases: the concern itself, timeline events (notes/status/agency/
+// reassignment), actions and body-map records. Uses casesForStudent() (not
+// visibleCases()) to match the existing student-modal "Complete chronology"
+// panel's behaviour — once a staff member has legitimate access to open a
+// student (gated by renderStudents()'s own visibility rules), they see that
+// child's full safeguarding picture, not just the cases they personally logged.
+// Known limitation: actions and body-map marks have no per-entry timestamp in
+// the current data model, so they're anchored to their case's logged date.
+const CHRONOLOGY_TYPE_LABELS = { concern:'Concern', note:'Note', status:'Status change', agency:'Agency referral', assignee:'Reassigned', action:'Action', bodymap:'Body map' };
+function chronologyTypeLabel(t){ return CHRONOLOGY_TYPE_LABELS[t] || 'Update'; }
+function buildChronologyEvents(studentId){
+  const ev = [];
+  casesForStudent(studentId).forEach(c=>{
+    ev.push({ time:c.date, type:'concern', text:`${c.category}${c.subcategory?' · '+c.subcategory:''}${c.description?' — '+c.description:''}`, who:c.reporter, caseId:c.id, category:c.category, risk:c.risk, status:c.status });
+    (c.timeline||[]).forEach(t=>{
+      if(t.type==='log') return; // the case's own creation is already the 'concern' entry above
+      ev.push({ time:t.time, type:t.type||'note', text:t.text, who:t.author, caseId:c.id, category:c.category, risk:c.risk, status:c.status });
+    });
+    (c.actions||[]).forEach(a=>{
+      ev.push({ time:c.date, type:'action', text:(a.done?'Completed: ':'')+a.text, who:a.owner, caseId:c.id, category:c.category, risk:c.risk, status:c.status });
+    });
+    (c.bodyMap||[]).forEach((m,i)=>{
+      ev.push({ time:c.date, type:'bodymap', text:`Mark ${i+1}${m.note?': '+m.note:''}`, who:c.reporter, caseId:c.id, category:c.category, risk:c.risk, status:c.status });
+    });
+  });
+  return ev.sort((a,b)=> new Date(a.time)-new Date(b.time));
+}
+let chronologyFilters = { type:'All', from:'', to:'' };
+function openChronology(studentId){
+  const s = studentById(studentId); if(!s) return;
+  activeStudentId = studentId;
+  chronologyFilters = { type:'All', from:'', to:'' };
+  const typeSel=$('chrType'), fromEl=$('chrFrom'), toEl=$('chrTo');
+  if(typeSel) typeSel.value='All'; if(fromEl) fromEl.value=''; if(toEl) toEl.value='';
+  logAudit('Chronology opened', s.name);
+  persist();
+  go('chronology');
+}
+function onChronologyFilterChange(){
+  chronologyFilters = { type:$('chrType')?.value||'All', from:$('chrFrom')?.value||'', to:$('chrTo')?.value||'' };
+  renderChronology();
+}
+function filteredChronologyEvents(){
+  if(!activeStudentId) return [];
+  let ev = buildChronologyEvents(activeStudentId);
+  if(chronologyFilters.type!=='All') ev = ev.filter(e=>e.type===chronologyFilters.type);
+  if(chronologyFilters.from) ev = ev.filter(e=> new Date(e.time) >= new Date(chronologyFilters.from));
+  if(chronologyFilters.to) ev = ev.filter(e=> new Date(e.time) <= new Date(chronologyFilters.to+'T23:59:59'));
+  return ev;
+}
+function renderChronology(){
+  const s = studentById(activeStudentId);
+  if(!s){ toast('Open a student to view their chronology','warning'); go('students'); return; }
+  $('chrStudentName').textContent = s.name;
+  $('chrStudentMeta').textContent = `${s.year||''}${s.form?' · '+s.form:''} · ${casesForStudent(s.id).length} concern${casesForStudent(s.id).length!==1?'s':''} on record`;
+  const ev = filteredChronologyEvents();
+  $('chrCount').textContent = `${ev.length} entr${ev.length!==1?'ies':'y'}`;
+  const icoMap = { concern:'shield-plus', note:'message-square', status:'refresh-cw', agency:'git-merge', assignee:'user-check', action:'list-checks', bodymap:'scan-line' };
+  $('chrList').innerHTML = ev.length ? ev.map(e=>{
+    const sr = safeRisk(e.risk);
+    return `<div class="relative"><span class="absolute -left-[26px] top-0.5 w-7 h-7 -ml-2 rounded-full bg-${RISK[sr].soft} grid place-items-center"><i data-lucide="${icoMap[e.type]||'dot'}" class="w-3.5 h-3.5 text-${RISK[sr].color}"></i></span>
+      <div class="text-[10px] font-bold uppercase tracking-wide text-slate-400 flex items-center gap-1.5 flex-wrap">${fmtDate(e.time)} · ${esc(e.who||'—')}<span class="px-1.5 py-0.5 rounded bg-dim text-slate-500 normal-case font-semibold">${esc(chronologyTypeLabel(e.type))}</span></div>
+      <button onclick="openCase('${e.caseId}')" class="text-left w-full mt-1 bg-card p-3 rounded-2xl border border-line hover:border-brand/40 transition-colors">
+        <div class="flex items-center justify-between gap-2 mb-1"><span class="text-sm font-bold text-ink">${esc(e.category||'')}</span>${riskBadge(e.risk)}</div>
+        <p class="text-xs text-slate-500 font-medium">${esc(e.text||'')}</p>
+        <div class="mt-1.5">${statusPill(e.status)}</div></button></div>`;
+  }).join('') : emptyState('history','No matching history','Try widening the filters.');
+  icons();
+}
+function exportChronologyCSV(){
+  const s = studentById(activeStudentId); if(!s) return;
+  const rows = [['Date','Type','Category','Risk','Status','Recorded by','Details']];
+  filteredChronologyEvents().forEach(e=> rows.push([fmtDate(e.time), chronologyTypeLabel(e.type), e.category||'', e.risk||'', e.status||'', e.who||'', (e.text||'').replace(/\s+/g,' ')]));
+  downloadCSV(rows, `chronology-${s.name.replace(/\W+/g,'-')}-${new Date().toISOString().slice(0,10)}.csv`);
+  logAudit('Chronology exported', s.name); persist();
+  toast('Chronology exported');
+}
+function printChronology(){
+  const s = studentById(activeStudentId); if(!s) return;
+  // Open synchronously (in the click handler) so popup blockers allow it —
+  // matches the pattern already used by exportSendReportPDF().
+  const w = window.open('', '', 'width=900,height=800');
+  if(!w){ toast('Pop-up blocked — allow pop-ups to print the chronology','error'); return; }
+  const ev = filteredChronologyEvents();
+  const rowsHtml = ev.map(e=>`<tr><td>${fmtDate(e.time)}</td><td>${esc(chronologyTypeLabel(e.type))}</td><td>${esc(e.category||'')}</td><td>${esc(e.risk||'')}</td><td>${esc(e.status||'')}</td><td>${esc(e.who||'')}</td><td>${esc(e.text||'')}</td></tr>`).join('');
+  const html = `<!doctype html><html><head><title>Chronology - ${esc(s.name)}</title>
+    <style>
+      body{font-family:Arial,sans-serif;margin:20px;color:#0f1b1a}
+      h1{color:#0d7a6f;border-bottom:3px solid #0d7a6f;padding-bottom:10px}
+      .meta{color:#666;font-size:12px;margin-bottom:16px}
+      table{width:100%;border-collapse:collapse;margin-top:12px}
+      th,td{border:1px solid #ddd;padding:8px;font-size:11px;text-align:left;vertical-align:top}
+      th{background:#0d7a6f;color:#fff}
+      tr:nth-child(even){background:#f9f9f9}
+      .footer{margin-top:24px;padding-top:12px;border-top:1px solid #ddd;color:#666;font-size:11px}
+    </style></head><body>
+    <h1>Full chronology — ${esc(s.name)}</h1>
+    <div class="meta"><p><strong>${esc(s.year||'')} ${esc(s.form?('· '+s.form):'')}</strong></p>
+      <p>Prepared by: ${esc(ME.name)} (${esc(ME.role)})</p><p>Generated: ${new Date().toLocaleString()}</p></div>
+    <table><thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Risk</th><th>Status</th><th>Recorded by</th><th>Details</th></tr></thead><tbody>${rowsHtml||'<tr><td colspan="7">No entries</td></tr>'}</tbody></table>
+    <div class="footer"><p>This chronology is confidential and intended for safeguarding purposes only.</p><p>Generated by I CAN School Safeguarding Platform</p></div>
+    </body></html>`;
+  w.document.open(); w.document.write(html); w.document.close();
+  setTimeout(()=> w.print(), 400);
+  logAudit('Chronology printed', s.name); persist();
+}
 // Fully removes a student: their concern cases, their SEND register entry (feeds the
 // whole-school Overview Summary) and the student record itself, so nothing about them
 // lingers in any report once deleted.
@@ -2113,7 +2450,7 @@ async function deleteStudent(){
   if(CAN_USE_APPS_SCRIPT()){
     const sendEntry = SEND_CASES_LIST.find(x=>x.studentId===s.id);
     if(sendEntry){
-      try{ await scriptGet('deleteSendCase', { adminCode: ME.code, id: sendEntry.id }); }catch(e){}
+      try{ await scriptCall('deleteSendCase', { id: sendEntry.id }); }catch(e){}
       SEND_CASES_LIST = SEND_CASES_LIST.filter(x=>x.id!==sendEntry.id);
     }
   }
@@ -2130,22 +2467,43 @@ async function deleteStudent(){
 // ---------- chart colour map ----------
 const HEX = { brand:'#0d7a6f', low:'#0e7490', med:'#b45309', high:'#c2410c', crit:'#be123c', ok:'#047857', police:'#1d4ed8', social:'#9333ea', health:'#0f766e', camhs:'#0891b2', earlyhelp:'#ca8a04', slate:'#94a3b8' };
 const CAT_PALETTE = ['#0d7a6f','#0e7490','#b45309','#c2410c','#be123c','#9333ea','#1d4ed8','#0891b2','#047857','#ca8a04','#6366f1','#db2777','#65a30d','#94a3b8'];
-Chart.defaults.font.family='Inter'; Chart.defaults.font.weight='600'; Chart.defaults.color='#64748b';
 
-function renderCatChart(open){
+// Chart.js (~200KB) is loaded on first actual need rather than eagerly in
+// <head> — dashboard/analytics/SEND-report are the only views that use it,
+// and most sessions spend most of their time in concerns/students/tasks.
+const CHART_JS_URL = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js';
+const CHART_JS_INTEGRITY = 'sha384-vsrfeLOOY6KuIYKDlmVH5UiBmgIdB1oEf7p01YgWHuqmOHfZr374+odEv96n9tNC';
+let chartJsLoadPromise = null;
+function loadChartJs(){
+  if(window.Chart) return Promise.resolve();
+  if(chartJsLoadPromise) return chartJsLoadPromise;
+  chartJsLoadPromise = new Promise((resolve, reject)=>{
+    const s = document.createElement('script');
+    s.src = CHART_JS_URL;
+    s.integrity = CHART_JS_INTEGRITY;
+    s.crossOrigin = 'anonymous';
+    s.onload = ()=>{ Chart.defaults.font.family='Inter'; Chart.defaults.font.weight='600'; Chart.defaults.color='#64748b'; resolve(); };
+    s.onerror = ()=>{ chartJsLoadPromise = null; reject(new Error('Could not load charting library')); };
+    document.head.appendChild(s);
+  });
+  return chartJsLoadPromise;
+}
+
+async function renderCatChart(open){
   const counts={}; open.forEach(c=> counts[c.category]=(counts[c.category]||0)+1);
   const labels=Object.keys(counts).sort((a,b)=>counts[b]-counts[a]);
   const data=labels.map(l=>counts[l]);
-  if(charts.cat) charts.cat.destroy();
   const ctx=$('catChart'); if(!ctx) return;
   if(!labels.length){ labels.push('No active concerns'); data.push(1); }
+  try{ await loadChartJs(); }catch(e){ return; }
+  if(charts.cat) charts.cat.destroy();
   charts.cat=new Chart(ctx,{ type:'doughnut',
     data:{ labels, datasets:[{ data, backgroundColor:CAT_PALETTE, borderWidth:2, borderColor:'#fff', hoverOffset:6 }] },
     options:{ responsive:true, maintainAspectRatio:false, cutout:'66%',
       plugins:{ legend:{ position:'bottom', labels:{ usePointStyle:true, boxWidth:8, padding:12, font:{size:11,weight:'700'} } } } } });
 }
 
-function renderAnalytics(){
+async function renderAnalytics(){
   const cs=DB.cases;
   $('anTotal').textContent=cs.length;
   const resolved=cs.filter(c=>c.status==='Resolved');
@@ -2161,6 +2519,7 @@ function renderAnalytics(){
   const series={Critical:[],High:[],Medium:[],Low:[]};
   months.forEach(m=>{ const mk=key(m); Object.keys(series).forEach(r=> series[r].push(cs.filter(c=>key(c.date)===mk&&c.risk===r).length)); });
   const mlabels=months.map(m=>m.toLocaleDateString('en-GB',{month:'short'}));
+  try{ await loadChartJs(); }catch(e){ return; }
   if(charts.trend) charts.trend.destroy();
   charts.trend=new Chart($('trendChart'),{ type:'bar',
     data:{ labels:mlabels, datasets:[
@@ -2350,7 +2709,7 @@ async function loadSendReportForPeriod(period){
   const base = defaultSendReport(period);
   if(!CAN_USE_APPS_SCRIPT()) return base;
   try{
-    const res = await scriptGet('getSendReport', { adminCode: ME.code, period });
+    const res = await scriptCall('getSendReport', { period });
     if(!res.ok || !res.data) return base;
     const d = res.data;
     return {
@@ -2423,7 +2782,7 @@ async function loadCurrentSendReport(force){
 async function saveSendReportData(){
   if(!CAN_USE_APPS_SCRIPT()) { toast('Apps Script URL not configured','error'); return { ok:false }; }
   const payload = { overview:SEND_REPORT.overview, referrals:SEND_REPORT.referrals, needs:SEND_REPORT.needs, stats:SEND_REPORT.stats, summary:SEND_REPORT.summary };
-  return scriptGet('saveSendReport', { adminCode: ME.code, period: SEND_REPORT.period, month: SEND_REPORT.month, payload: JSON.stringify(payload) });
+  return scriptCall('saveSendReport', { period: SEND_REPORT.period, month: SEND_REPORT.month, payload: JSON.stringify(payload) });
 }
 async function changeSendReportPeriod(period){
   srPeriod = period || currentPeriodKey();
@@ -2435,7 +2794,7 @@ async function loadSendCasesData(force){
   if(!CAN_USE_APPS_SCRIPT()) return SEND_CASES_LIST;
   if(sendCasesLoaded && !force) return SEND_CASES_LIST;
   try{
-    const res = await scriptGet('getSendCases', { adminCode: ME.code });
+    const res = await scriptCall('getSendCases', {});
     if(res.ok) SEND_CASES_LIST = res.data || [];
     sendCasesLoaded = true;
   }catch(e){}
@@ -2532,7 +2891,7 @@ async function submitSendCase(){
     notes: $('scNotes').value.trim()
   };
   try{
-    const res = await scriptGet('saveSendCase', { adminCode: ME.code, payload: JSON.stringify(payload) });
+    const res = await scriptCall('saveSendCase', { payload: JSON.stringify(payload) });
     if(!res.ok){ toast(res.error||'Could not log SEND case','error'); return; }
     logAudit('SEND case logged', `${sendStatusLabel(status)} · ${name}`, ME.name);
     closeModal('sendCaseModal');
@@ -2545,7 +2904,7 @@ async function deleteSendCaseEntry(id){
   if(!CAN_USE_APPS_SCRIPT()) return;
   if(!confirm('Remove this SEND case log entry?')) return;
   try{
-    const res = await scriptGet('deleteSendCase', { adminCode: ME.code, id });
+    const res = await scriptCall('deleteSendCase', { id });
     if(!res.ok){ toast(res.error||'Could not delete entry','error'); return; }
     sendCasesLoaded = false;
     toast('SEND case entry removed');
@@ -2646,6 +3005,7 @@ async function renderSendReport(){
   const rlabels = SR_REFERRAL_SOURCES.map(s=>s.label);
   const rdata = SR_REFERRAL_SOURCES.map(s=> Number(SEND_REPORT.referrals[s.key])||0);
   const rcolors = SR_REFERRAL_SOURCES.map(s=> HEX[s.color] || HEX.slate);
+  try{ await loadChartJs(); }catch(e){ return; }
   if(charts.srReferral) charts.srReferral.destroy();
   charts.srReferral = new Chart($('srReferralChart'), { type:'doughnut',
     data:{ labels:rlabels, datasets:[{ data: rdata.some(v=>v>0)? rdata : [1,0,0,0,0], backgroundColor:rcolors, borderWidth:2, borderColor:'#fff' }] },
@@ -3012,10 +3372,48 @@ async function saveSendReportEdit(){
 }
 
 // ---------- Apps Script code for live mode ----------
-const APPSCRIPT = `const SHEET_USERS = 'users';
+const APPSCRIPT = `// ── I CAN School · Safeguarding Platform — Apps Script backend ──────────────
+// This is the ONLY backend for this app. There is no Node/Express server —
+// the frontend (index.html) talks exclusively to this Web App over doPost.
+//
+// One-time setup (see README.md "Deployment" for full steps):
+//   1. Deploy as a Web App (execute as: Me, access: Anyone).
+//   2. Set the ADMIN_CODE script property (Project Settings > Script Properties)
+//      OR just log in once with any code on a fresh sheet — see loginByCode().
+//   3. Restrict the underlying Google Sheet's sharing to yourself only; the
+//      Web App deployment is the only thing that needs to read/write it.
+
+const SHEET_USERS = 'users';
 const SHEET_CASES = 'cases';
-const SHEET_SEND_CASES = 'send_cases';
 const SHEET_SEND_REPORTS = 'send_reports';
+const SHEET_SEND_CASES = 'send_cases';
+const SHEET_STUDENTS = 'students';
+const SHEET_FAMILIES = 'families';
+
+// Roles that may edit the whole-school SEND report figures / whole-school
+// dashboard. Kept in sync with index.html's IS_DSL_OR_PRINCIPAL.
+const REPORT_ROLES = ['Lead DSL', 'Deputy DSL', 'Principal'];
+// Roles that may log/edit individual SEND register entries. Broader than
+// REPORT_ROLES — SENDCO can add students to the register without seeing the
+// full whole-school report.
+const SEND_CASE_ROLES = ['Lead DSL', 'Deputy DSL', 'Principal', 'SENDCO'];
+// Roles with User Management / admin rights. 'Senior Leadership' is a legacy
+// role kept for backward compatibility with older rows — it's no longer an
+// option in the "create user" form (see index.html role <select>), but an
+// existing user saved under it must keep working.
+const ADMIN_ROLES = ['Lead DSL', 'Principal', 'Senior Leadership'];
+// Roles assignable from the "create/edit user" form today.
+const VALID_ROLES = ['Teacher', 'SENDCO', 'Pastoral Lead', 'Deputy DSL', 'Head of Primary', 'Head of Secondary', 'Lead DSL', 'Principal'];
+
+const CODE_MIN_LENGTH = 6;
+const CODE_MAX_LENGTH = 24;
+const NAME_MAX_LENGTH = 100;
+const NOTES_MAX_LENGTH = 5000;
+const PBKDF2_ITERATIONS = 12000;
+const SESSION_TTL_SECONDS = 1200; // 20 min sliding idle timeout
+const SESSION_MAX_AGE_MS = 8 * 3600000; // 8h absolute cap, matches prior client-side session length
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_SECONDS = 900; // 15 min
 
 function jsonOut(obj){
   return ContentService.createTextOutput(JSON.stringify(obj))
@@ -3027,14 +3425,100 @@ function norm(s){ return String(s || '').trim(); }
 function normUpper(s){ return norm(s).toUpperCase(); }
 function normLower(s){ return norm(s).toLowerCase(); }
 
-function hashCode(code){
-  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, norm(code));
-  return bytes.map(function(b){ const v=(b<0?b+256:b).toString(16); return v.length===1?'0'+v:v; }).join('');
+// ── Validation (ported from the retired Node server's validators) ──────────
+function validateString(value, min, max){
+  min = min || 1; max = max || NAME_MAX_LENGTH;
+  if(typeof value !== 'string') return { valid:false, error:'Must be a string' };
+  const trimmed = value.trim();
+  if(trimmed.length < min || trimmed.length > max) return { valid:false, error:'Must be ' + min + '-' + max + ' characters' };
+  return { valid:true, value:trimmed };
+}
+function validateCode(value){
+  if(typeof value !== 'string') return { valid:false, error:'Access code must be a string' };
+  const trimmed = value.trim();
+  if(trimmed.length < CODE_MIN_LENGTH || trimmed.length > CODE_MAX_LENGTH) return { valid:false, error:'Access code must be ' + CODE_MIN_LENGTH + '-' + CODE_MAX_LENGTH + ' characters' };
+  if(/\\s/.test(trimmed)) return { valid:false, error:'Access code cannot contain spaces' };
+  if(!/^[\\x21-\\x7E]+$/.test(trimmed)) return { valid:false, error:'Access code contains invalid characters' };
+  return { valid:true, value:trimmed };
+}
+function validateRole(value){
+  if(VALID_ROLES.indexOf(value) < 0) return { valid:false, error:'Role must be one of: ' + VALID_ROLES.join(', ') };
+  return { valid:true, value:value };
 }
 
-function hashCodeLegacy(code){
-  const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, normUpper(code));
+// ── Hashing / crypto helpers ────────────────────────────────────────────────
+function bytesToHex(bytes){
   return bytes.map(function(b){ const v=(b<0?b+256:b).toString(16); return v.length===1?'0'+v:v; }).join('');
+}
+function sha256Hex(s){
+  return bytesToHex(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(s)));
+}
+function timingSafeEqual(a, b){
+  if(typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let diff = 0;
+  for(let i=0;i<a.length;i++) diff |= (a.charCodeAt(i) ^ b.charCodeAt(i));
+  return diff === 0;
+}
+function secureByteHex(numBytes){
+  let hex = '';
+  while(hex.length < numBytes*2) hex += Utilities.getUuid().replace(/-/g,'');
+  return hex.slice(0, numBytes*2);
+}
+function secureBytes(numBytes){
+  const hex = secureByteHex(numBytes);
+  const bytes = [];
+  for(let i=0;i<hex.length;i+=2) bytes.push(parseInt(hex.substr(i,2),16));
+  return bytes;
+}
+function secureToken(){
+  return secureByteHex(32); // 256 bits, hex-encoded
+}
+
+// Legacy (pre-security-overhaul) hashing kept only so existing users can be
+// verified once and transparently migrated — see verifyUserCode().
+function hashCode(code){ return sha256Hex(norm(code)); }
+function hashCodeLegacy(code){ return sha256Hex(normUpper(code)); }
+
+// PBKDF2 (RFC 8018) built from HMAC-SHA256, since Apps Script's V8 runtime
+// has no native PBKDF2/AES/WebCrypto. Iterated stretching makes brute-forcing
+// a stolen hash meaningfully slower than the old single-round SHA-256.
+function hmacBytes(messageBytes, keyString){
+  return Utilities.computeHmacSha256Signature(messageBytes, keyString);
+}
+function pbkdf2Hex(password, saltBytes, iterations){
+  const hLen = 32;
+  let U = hmacBytes(saltBytes.concat([0,0,0,1]), password);
+  const T = U.slice();
+  for(let c=1;c<iterations;c++){
+    U = hmacBytes(U, password);
+    for(let k=0;k<hLen;k++) T[k] = T[k] ^ U[k];
+  }
+  return bytesToHex(T);
+}
+function hashCodeStrong(code, saltBytes, iterations){
+  const iter = iterations || PBKDF2_ITERATIONS;
+  const salt = saltBytes || secureBytes(16);
+  const hashHex = pbkdf2Hex(norm(code), salt, iter);
+  return 'pbkdf2$' + iter + '$' + Utilities.base64Encode(salt) + '$' + hashHex;
+}
+function verifyStrongHash(code, stored){
+  const parts = String(stored).split('$');
+  if(parts.length !== 4 || parts[0] !== 'pbkdf2') return false;
+  const iter = Number(parts[1]);
+  const saltBytes = Array.prototype.slice.call(Utilities.base64Decode(parts[2]));
+  const actualHex = pbkdf2Hex(norm(code), saltBytes, iter);
+  return timingSafeEqual(actualHex, parts[3]);
+}
+// Verifies against whichever scheme the stored hash is in; the caller is
+// responsible for re-hashing+saving on a successful legacy match (see
+// loginByCode) so every account silently upgrades to PBKDF2 on next login.
+function verifyUserCode(code, storedHash){
+  if(!storedHash) return false;
+  if(String(storedHash).indexOf('pbkdf2$') === 0) return verifyStrongHash(code, storedHash);
+  return storedHash === hashCode(code) || storedHash === hashCodeLegacy(code);
+}
+function isLegacyHash(storedHash){
+  return !!storedHash && String(storedHash).indexOf('pbkdf2$') !== 0;
 }
 
 function genCode(len){
@@ -3044,14 +3528,117 @@ function genCode(len){
   const symbols = '!@#$%^&*_-+=';
   const all = upper + lower + digits + symbols;
   const size = Math.max(12, len || 14);
-  const pick = function(chars){ return chars.charAt(Math.floor(Math.random()*chars.length)); };
+  const pool = secureBytes(size + 24); // extra bytes for the shuffle pass
+  let pi = 0;
+  const nextByte = function(){ const b = pool[pi++]; return b<0?b+256:b; };
+  const pick = function(chars){ return chars.charAt(nextByte() % chars.length); };
   const out = [pick(upper), pick(lower), pick(digits), pick(symbols)];
-  for(let i=out.length;i<size;i++) out.push(pick(all));
+  while(out.length < size) out.push(pick(all));
   for(let i=out.length-1;i>0;i--){
-    const j = Math.floor(Math.random()*(i+1));
+    const j = nextByte() % (i+1);
     const t = out[i]; out[i]=out[j]; out[j]=t;
   }
   return out.join('');
+}
+
+// ── Rate limiting (per submitted code, so brute-forcing one code is capped
+// without locking out other users) ──────────────────────────────────────────
+function rateLimited(code, fn){
+  const cache = CacheService.getScriptCache();
+  const key = 'fail_' + sha256Hex(normUpper(norm(code)));
+  const attempts = Number(cache.get(key) || '0');
+  if(attempts >= LOGIN_MAX_ATTEMPTS){
+    return { ok:false, error:'Too many attempts with this code. Please wait 15 minutes and try again.' };
+  }
+  const result = fn();
+  if(result && result.ok){
+    cache.remove(key);
+  } else {
+    cache.put(key, String(attempts+1), LOGIN_LOCKOUT_SECONDS);
+  }
+  return result;
+}
+
+// ── Sessions (CacheService — opaque token never logged or stored raw) ──────
+function createSession(user){
+  const token = secureToken();
+  const cache = CacheService.getScriptCache();
+  const key = 'sess_' + sha256Hex(token);
+  cache.put(key, JSON.stringify({
+    userId: user.id, role: user.role, firstName: user.firstName, lastName: user.lastName,
+    loginAt: Date.now()
+  }), SESSION_TTL_SECONDS);
+  return token;
+}
+function requireSession(token){
+  const t = norm(token);
+  if(!t) return { ok:false, error:'Session expired. Please sign in again.', code:'AUTH' };
+  const cache = CacheService.getScriptCache();
+  const key = 'sess_' + sha256Hex(t);
+  const raw = cache.get(key);
+  if(!raw) return { ok:false, error:'Session expired. Please sign in again.', code:'AUTH' };
+  let sess;
+  try { sess = JSON.parse(raw); } catch(e){ return { ok:false, error:'Session expired. Please sign in again.', code:'AUTH' }; }
+  if(!sess.loginAt || (Date.now() - sess.loginAt) > SESSION_MAX_AGE_MS){
+    cache.remove(key);
+    return { ok:false, error:'Session expired. Please sign in again.', code:'AUTH' };
+  }
+  // Sliding expiry: any authenticated call extends the idle window.
+  cache.put(key, raw, SESSION_TTL_SECONDS);
+  return { ok:true, user:{ id:sess.userId, firstName:sess.firstName, lastName:sess.lastName, role:sess.role }, cacheKey:key };
+}
+function logoutAction(token){
+  const t = norm(token);
+  if(t) CacheService.getScriptCache().remove('sess_' + sha256Hex(t));
+  return { ok:true };
+}
+
+// ── Concurrency: short-held lock around every sheet write ──────────────────
+function withLock(fn){
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try { return fn(); }
+  finally { lock.releaseLock(); }
+}
+
+// ── Data version + cache (avoids re-reading whole sheets on every request) ─
+function getDataVersion(){
+  return Number(PropertiesService.getScriptProperties().getProperty('DATA_VERSION') || '0');
+}
+function bumpDataVersion(){
+  const props = PropertiesService.getScriptProperties();
+  const v = getDataVersion() + 1;
+  props.setProperty('DATA_VERSION', String(v));
+  return v;
+}
+function cacheGetJson(metaKey, chunkPrefix){
+  try{
+    const cache = CacheService.getScriptCache();
+    const metaRaw = cache.get(metaKey);
+    if(!metaRaw) return undefined;
+    const meta = JSON.parse(metaRaw);
+    if(meta.version !== getDataVersion()) return undefined;
+    const parts = [];
+    for(let i=0;i<meta.chunks;i++){
+      const part = cache.get(chunkPrefix + i);
+      if(part === null) return undefined;
+      parts.push(part);
+    }
+    return JSON.parse(parts.join(''));
+  }catch(e){ return undefined; }
+}
+function cachePutJson(metaKey, chunkPrefix, value){
+  try{
+    const cache = CacheService.getScriptCache();
+    const json = JSON.stringify(value);
+    const chunkSize = 90000;
+    const chunks = [];
+    for(let i=0;i<json.length;i+=chunkSize) chunks.push(json.slice(i, i+chunkSize));
+    const puts = {};
+    chunks.forEach(function(c,i){ puts[chunkPrefix+i] = c; });
+    puts[metaKey] = JSON.stringify({ version:getDataVersion(), chunks:chunks.length });
+    CacheService.getScriptCache().putAll(puts, 1500);
+  }catch(e){ /* caching is best-effort only; ignore (e.g. payload too large) */ }
 }
 
 function getOrCreateSheet(name, headers){
@@ -3064,10 +3651,10 @@ function getOrCreateSheet(name, headers){
   return sh;
 }
 
+// ── Users ────────────────────────────────────────────────────────────────
 function userHeaders(){
   return ['id','firstName','lastName','role','email','codeHash','active','createdAt','updatedAt','lastLogin'];
 }
-
 function loadUsers(){
   const sh = getOrCreateSheet(SHEET_USERS, userHeaders());
   const vals = sh.getDataRange().getValues();
@@ -3076,417 +3663,593 @@ function loadUsers(){
     const r = vals[i];
     if(String(r.join('')).trim()==='') continue;
     users.push({
-      id: r[0],
-      firstName: r[1],
-      lastName: r[2],
-      role: r[3] || 'Teacher',
-      email: r[4] || '',
-      codeHash: r[5] || '',
-      active: String(r[6]).toLowerCase() !== 'false',
-      createdAt: r[7] || '',
-      updatedAt: r[8] || '',
-      lastLogin: r[9] || ''
+      id: r[0], firstName: r[1], lastName: r[2], role: r[3] || 'Teacher', email: r[4] || '',
+      codeHash: r[5] || '', active: String(r[6]).toLowerCase() !== 'false',
+      createdAt: r[7] || '', updatedAt: r[8] || '', lastLogin: r[9] || ''
     });
   }
   return users;
 }
-
 function saveUsers(users){
   const sh = getOrCreateSheet(SHEET_USERS, userHeaders());
   const headers = userHeaders();
   sh.clearContents();
   sh.getRange(1,1,1,headers.length).setValues([headers]);
-  if(!users || !users.length) return;
-  const rows = users.map(function(u){
-    return [u.id,u.firstName,u.lastName,u.role,u.email,u.codeHash,Boolean(u.active),u.createdAt,u.updatedAt,u.lastLogin];
-  });
-  sh.getRange(2,1,rows.length,headers.length).setValues(rows);
+  if(users && users.length){
+    const rows = users.map(function(u){
+      return [u.id,u.firstName,u.lastName,u.role,u.email,u.codeHash,Boolean(u.active),u.createdAt,u.updatedAt,u.lastLogin];
+    });
+    sh.getRange(2,1,rows.length,headers.length).setValues(rows);
+  }
+  bumpDataVersion();
 }
-
 function publicUser(u){
-  return {
-    id:u.id,
-    firstName:u.firstName,
-    lastName:u.lastName,
-    role:u.role,
-    email:u.email,
-    active:Boolean(u.active),
-    createdAt:u.createdAt,
-    updatedAt:u.updatedAt,
-    lastLogin:u.lastLogin
-  };
+  return { id:u.id, firstName:u.firstName, lastName:u.lastName, role:u.role, email:u.email,
+    active:Boolean(u.active), createdAt:u.createdAt, updatedAt:u.updatedAt, lastLogin:u.lastLogin };
 }
 
 function bootstrapAdminCode(){
   const scriptProp = normUpper(PropertiesService.getScriptProperties().getProperty('ADMIN_CODE'));
-  if(scriptProp) return scriptProp;
-  return null;
+  return scriptProp || null;
 }
-
 function isAdminCode(code){
   const admin = bootstrapAdminCode();
-  if(!PropertiesService.getScriptProperties().getProperty('ADMIN_CODE')){
-    try { PropertiesService.getScriptProperties().setProperty('ADMIN_CODE', admin); } catch(e) {}
-  }
   return !!admin && normUpper(code) === admin;
 }
+// The bootstrap admin has no row in the users sheet, so its display name is
+// stored separately in Script Properties — this is what lets a rename via
+// Settings survive a fresh login instead of reverting to "System Admin".
+function adminIdentity(){
+  const props = PropertiesService.getScriptProperties();
+  return { id:'__admin__', firstName: props.getProperty('ADMIN_FIRST_NAME') || 'System',
+    lastName: props.getProperty('ADMIN_LAST_NAME') || 'Admin', role:'Lead DSL' };
+}
+function isAdminRole(role){ return ADMIN_ROLES.indexOf(role) >= 0; }
+function isReportRole(role){ return REPORT_ROLES.indexOf(role) >= 0; }
+function isSendCaseRole(role){ return SEND_CASE_ROLES.indexOf(role) >= 0; }
 
-function requireAdmin(adminCode){
-  if(isAdminCode(adminCode)) return { ok:true, admin:{ id:'__admin__', firstName:'System', lastName:'Admin', role:'Lead DSL' } };
-  const users = loadUsers();
-  const codeHash = hashCode(adminCode);
-  const codeHashLegacy = hashCodeLegacy(adminCode);
-  const u = users.find(function(x){
-    return x.active && (x.codeHash === codeHash || x.codeHash === codeHashLegacy) && (x.role==='Lead DSL' || x.role==='Head of Primary' || x.role==='Head of Secondary' || x.role==='Principal');
-  });
-  if(!u) return { ok:false, error:'Invalid admin code' };
-  return { ok:true, admin:u };
-}
-
-function caseHeaders(){
-  return ['id','date','reporter','studentId','studentName','year','studentClass','department','category','subcategory','risk','status','assignee','location','description','strategies','strategyImpactPositive','strategyImpactNone','sendcoReason','strategyDuration','agencies','actions','timeline','bodyMap'];
-}
-function safeJsonParse(s, fallback){
-  try{ const v = JSON.parse(s); return v===undefined ? fallback : v; }catch(e){ return fallback; }
-}
-function loadCases(){
-  const headers = caseHeaders();
-  const sh = getOrCreateSheet(SHEET_CASES, headers);
-  const vals = sh.getDataRange().getValues();
-  const cases = [];
-  for(let i=1;i<vals.length;i++){
-    const r = vals[i];
-    if(String(r.join('')).trim()==='') continue;
-    cases.push({
-      rowId:i+1, id:r[0], date:r[1], reporter:r[2], studentId:r[3], studentName:r[4],
-      year:r[5], studentClass:r[6], department:r[7], category:r[8], subcategory:r[9],
-      risk:r[10], status:r[11], assignee:r[12], location:r[13], description:r[14],
-      strategies:safeJsonParse(r[15], []), strategyImpactPositive:r[16], strategyImpactNone:r[17],
-      sendcoReason:r[18], strategyDuration:r[19], agencies:safeJsonParse(r[20], []),
-      actions:safeJsonParse(r[21], []), timeline:safeJsonParse(r[22], []), bodyMap:safeJsonParse(r[23], [])
-    });
-  }
-  return cases;
-}
-function saveCases(cases){
-  const headers = caseHeaders();
-  const sh = getOrCreateSheet(SHEET_CASES, headers);
-  sh.clearContents();
-  sh.getRange(1,1,1,headers.length).setValues([headers]);
-  if(!cases || !cases.length) return;
-  const rows = cases.map(function(c){
-    return [
-      c.id||'', c.date||'', c.reporter||'', c.studentId||'', c.studentName||'',
-      c.year||'', c.studentClass||'', c.department||'', c.category||'', c.subcategory||'',
-      c.risk||'', c.status||'', c.assignee||'', c.location||'', c.description||'',
-      JSON.stringify(c.strategies||[]), c.strategyImpactPositive||'', c.strategyImpactNone||'',
-      c.sendcoReason||'', c.strategyDuration||'', JSON.stringify(c.agencies||[]),
-      JSON.stringify(c.actions||[]), JSON.stringify(c.timeline||[]), JSON.stringify(c.bodyMap||[])
-    ];
-  });
-  sh.getRange(2,1,rows.length,headers.length).setValues(rows);
-}
-function getCasesAction(){
-  const cases = loadCases();
-  const data = cases.map(function(c){
-    const payload = {};
-    Object.keys(c).forEach(function(k){ if(k!=='rowId') payload[k]=c[k]; });
-    return { rowId:c.rowId, payload:payload };
-  });
-  return { ok:true, status:'success', data:data };
-}
-function syncCaseAction(payload){
-  if(!payload || !payload.id) return { ok:false, error:'Missing case id' };
-  const cases = loadCases();
-  const idx = cases.findIndex(function(c){ return c.id===payload.id; });
-  const merged = idx>=0 ? Object.assign({}, cases[idx], payload) : payload;
-  if(idx>=0) cases[idx] = merged; else cases.push(merged);
-  saveCases(cases);
-  return { ok:true };
-}
-function deleteCaseAction(id){
-  if(!id) return { ok:false, error:'Missing case id' };
-  const cases = loadCases().filter(function(c){ return c.id!==id; });
-  saveCases(cases);
-  return { ok:true };
+function findUserByName(name){
+  const n = norm(name).toLowerCase();
+  return loadUsers().find(function(u){ return (normLower(u.firstName)+' '+normLower(u.lastName)).trim()===n; });
 }
 
+// ── Auth: login / logout / session-bound self-service ──────────────────────
+// On a completely fresh deployment (no ADMIN_CODE property, no active
+// admin-role users yet), the first code anyone logs in with becomes the
+// admin code — this is the one-time self-provisioning step for a new sheet.
+// Once any admin-role user or ADMIN_CODE exists, this path never triggers.
 function loginByCode(code){
   const c = norm(code);
-  if(!c) return { ok:false, error:'Access code is required' };
+  const validation = validateCode(c);
+  if(!validation.valid) return { ok:false, error:validation.error };
+
   if(isAdminCode(c)){
-    return { ok:true, user:{ id:'__admin__', firstName:'System', lastName:'Admin', role:'Lead DSL' } };
+    const admin = adminIdentity();
+    return { ok:true, user:admin, token:createSession(admin) };
   }
+
   const users = loadUsers();
-  const codeHash = hashCode(c);
-  const codeHashLegacy = hashCodeLegacy(c);
-  const idx = users.findIndex(function(u){ return u.codeHash===codeHash || u.codeHash===codeHashLegacy; });
-  if(idx<0) return { ok:false, error:'Access code not recognized' };
+  const idx = users.findIndex(function(u){ return verifyUserCode(c, u.codeHash); });
+
+  if(idx < 0){
+    const activeAdmins = users.filter(function(u){ return u.active && isAdminRole(u.role); });
+    if(!bootstrapAdminCode() && activeAdmins.length===0){
+      try { PropertiesService.getScriptProperties().setProperty('ADMIN_CODE', normUpper(c)); } catch(e) {}
+      const admin = adminIdentity();
+      return { ok:true, user:admin, token:createSession(admin) };
+    }
+    return { ok:false, error:'Access code not recognized' };
+  }
   if(!users[idx].active) return { ok:false, error:'This access code has been deactivated.' };
-  if(users[idx].codeHash===codeHashLegacy) users[idx].codeHash = codeHash;
+
+  if(isLegacyHash(users[idx].codeHash)){
+    users[idx].codeHash = hashCodeStrong(c); // transparent upgrade, zero lockouts
+  }
   users[idx].lastLogin = nowIso();
   users[idx].updatedAt = nowIso();
-  saveUsers(users);
-  return { ok:true, user:publicUser(users[idx]) };
+  withLock(function(){ saveUsers(users); });
+
+  const pub = publicUser(users[idx]);
+  return { ok:true, user:pub, token:createSession({ id:users[idx].id, role:users[idx].role, firstName:users[idx].firstName, lastName:users[idx].lastName }) };
 }
 
-function listUsers(adminCode){
-  const auth = requireAdmin(adminCode);
-  if(!auth.ok) return { ok:false, error:auth.error };
-  return { ok:true, users: loadUsers().map(publicUser) };
-}
+function changeOwnCode(sessionUser, currentCode, newCode){
+  const cur = norm(currentCode), nxt = norm(newCode);
+  if(!cur || !nxt) return { ok:false, error:'Current and new password are required' };
+  if(cur===nxt) return { ok:false, error:'New password must be different' };
+  if(!isStrongPassword(nxt)) return { ok:false, error:'New password does not meet security requirements' };
 
-function saveUserAction(adminCode, id, firstName, lastName, role){
-  const auth = requireAdmin(adminCode);
-  if(!auth.ok) return { ok:false, error:auth.error };
-  const fn = norm(firstName), ln = norm(lastName), rl = norm(role)||'Teacher';
-  if(!fn || !ln) return { ok:false, error:'First and last name are required' };
-
-  const users = loadUsers();
-  let u = users.find(function(x){ return x.id === id; });
-  if(u){
-    u.firstName = fn; u.lastName = ln; u.role = rl; u.updatedAt = nowIso();
-    saveUsers(users);
-    return { ok:true, user:publicUser(u) };
+  if(sessionUser.id === '__admin__'){
+    if(!isAdminCode(cur)) return { ok:false, error:'Current password is incorrect' };
+    try { PropertiesService.getScriptProperties().setProperty('ADMIN_CODE', normUpper(nxt)); return { ok:true }; }
+    catch(e){ return { ok:false, error:'Could not update admin password' }; }
   }
 
-  const code = genCode(14);
-  u = {
-    id: 'u_' + Utilities.getUuid().replace(/-/g,'').slice(0,12),
-    firstName: fn,
-    lastName: ln,
-    role: rl,
-    email: '',
-    codeHash: hashCode(code),
-    active: true,
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-    lastLogin: ''
-  };
-  users.push(u);
-  saveUsers(users);
-  const out = publicUser(u);
-  out.code = code;
-  return { ok:true, user:out };
+  return withLock(function(){
+    const users = loadUsers();
+    const idx = users.findIndex(function(u){ return u.id===sessionUser.id; });
+    if(idx<0) return { ok:false, error:'Account not found' };
+    if(!users[idx].active) return { ok:false, error:'This account is deactivated' };
+    if(!verifyUserCode(cur, users[idx].codeHash)) return { ok:false, error:'Current password is incorrect' };
+    users[idx].codeHash = hashCodeStrong(nxt);
+    users[idx].updatedAt = nowIso();
+    saveUsers(users);
+    return { ok:true };
+  });
+}
+function isStrongPassword(code){
+  const s = norm(code);
+  return s.length>=12 && /[A-Z]/.test(s) && /[a-z]/.test(s) && /[0-9]/.test(s) && /[^A-Za-z0-9]/.test(s) && !/\\s/.test(s);
 }
 
-function regenUserCode(adminCode, id){
-  const auth = requireAdmin(adminCode);
-  if(!auth.ok) return { ok:false, error:auth.error };
-  const users = loadUsers();
-  const u = users.find(function(x){ return x.id===id; });
-  if(!u) return { ok:false, error:'User not found' };
-  const code = genCode(14);
-  u.codeHash = hashCode(code);
-  u.updatedAt = nowIso();
-  saveUsers(users);
-  return { ok:true, code:code };
+function updateOwnProfile(sessionUser, firstName, lastName){
+  const fnV = validateString(firstName, 1, NAME_MAX_LENGTH);
+  const lnV = validateString(lastName, 1, NAME_MAX_LENGTH);
+  if(!fnV.valid) return { ok:false, error:'First name: ' + fnV.error };
+  if(!lnV.valid) return { ok:false, error:'Last name: ' + lnV.error };
+
+  if(sessionUser.id === '__admin__'){
+    try {
+      PropertiesService.getScriptProperties().setProperty('ADMIN_FIRST_NAME', fnV.value);
+      PropertiesService.getScriptProperties().setProperty('ADMIN_LAST_NAME', lnV.value);
+      return { ok:true, user:adminIdentity() };
+    } catch(e){ return { ok:false, error:'Could not update admin profile' }; }
+  }
+
+  return withLock(function(){
+    const users = loadUsers();
+    const idx = users.findIndex(function(u){ return u.id===sessionUser.id; });
+    if(idx<0) return { ok:false, error:'Account not found' };
+    if(!users[idx].active) return { ok:false, error:'This account is deactivated' };
+    users[idx].firstName = fnV.value; users[idx].lastName = lnV.value; users[idx].updatedAt = nowIso();
+    saveUsers(users);
+    return { ok:true, user:publicUser(users[idx]) };
+  });
 }
 
-function toggleUser(adminCode, id){
-  const auth = requireAdmin(adminCode);
-  if(!auth.ok) return { ok:false, error:auth.error };
-  const users = loadUsers();
-  const u = users.find(function(x){ return x.id===id; });
-  if(!u) return { ok:false, error:'User not found' };
-  u.active = !Boolean(u.active);
-  u.updatedAt = nowIso();
-  saveUsers(users);
-  return { ok:true, active:Boolean(u.active) };
+// ── Admin: user management (role re-checked server-side every call) ────────
+function listUsers(sessionUser){
+  if(!isAdminRole(sessionUser.role)) return { ok:false, error:'You do not have permission to manage users' };
+  return { ok:true, users: loadUsers().map(publicUser) };
+}
+function saveUserAction(sessionUser, id, firstName, lastName, role){
+  if(!isAdminRole(sessionUser.role)) return { ok:false, error:'You do not have permission to manage users' };
+  const fnV = validateString(firstName, 1, NAME_MAX_LENGTH);
+  const lnV = validateString(lastName, 1, NAME_MAX_LENGTH);
+  if(!fnV.valid) return { ok:false, error:'First name: ' + fnV.error };
+  if(!lnV.valid) return { ok:false, error:'Last name: ' + lnV.error };
+  const roleV = validateRole(norm(role) || 'Teacher');
+  if(!roleV.valid) return { ok:false, error:roleV.error };
+
+  return withLock(function(){
+    const users = loadUsers();
+    let u = users.find(function(x){ return x.id === id; });
+    if(u){
+      u.firstName = fnV.value; u.lastName = lnV.value; u.role = roleV.value; u.updatedAt = nowIso();
+      saveUsers(users);
+      return { ok:true, user:publicUser(u) };
+    }
+    const code = genCode(14);
+    u = { id:'u_'+Utilities.getUuid().replace(/-/g,'').slice(0,12), firstName:fnV.value, lastName:lnV.value,
+      role:roleV.value, email:'', codeHash:hashCodeStrong(code), active:true, createdAt:nowIso(), updatedAt:nowIso(), lastLogin:'' };
+    users.push(u);
+    saveUsers(users);
+    const out = publicUser(u); out.code = code;
+    return { ok:true, user:out };
+  });
+}
+function regenUserCode(sessionUser, id){
+  if(!isAdminRole(sessionUser.role)) return { ok:false, error:'You do not have permission to manage users' };
+  return withLock(function(){
+    const users = loadUsers();
+    const u = users.find(function(x){ return x.id===id; });
+    if(!u) return { ok:false, error:'User not found' };
+    const code = genCode(14);
+    u.codeHash = hashCodeStrong(code); u.updatedAt = nowIso();
+    saveUsers(users);
+    return { ok:true, code:code };
+  });
+}
+function toggleUser(sessionUser, id){
+  if(!isAdminRole(sessionUser.role)) return { ok:false, error:'You do not have permission to manage users' };
+  return withLock(function(){
+    const users = loadUsers();
+    const u = users.find(function(x){ return x.id===id; });
+    if(!u) return { ok:false, error:'User not found' };
+    u.active = !Boolean(u.active); u.updatedAt = nowIso();
+    saveUsers(users);
+    return { ok:true, active:Boolean(u.active) };
+  });
+}
+function deleteUser(sessionUser, id){
+  if(!isAdminRole(sessionUser.role)) return { ok:false, error:'You do not have permission to manage users' };
+  return withLock(function(){
+    const users = loadUsers();
+    saveUsers(users.filter(function(u){ return u.id!==id; }));
+    return { ok:true };
+  });
 }
 
-function deleteUser(adminCode, id){
-  const auth = requireAdmin(adminCode);
-  if(!auth.ok) return { ok:false, error:auth.error };
-  const users = loadUsers();
-  const next = users.filter(function(u){ return u.id!==id; });
-  saveUsers(next);
+// ── Email notifications ─────────────────────────────────────────────────────
+function notifyAssignee(assignee, caseId, studentName, category, notifier){
+  const names = String(assignee).split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+  names.forEach(function(name){
+    const u = findUserByName(name);
+    if(!u || !u.email) return;
+    try {
+      MailApp.sendEmail({ to:u.email, subject:'[Safeguarding] You have been assigned a case: ' + studentName,
+        body:'You have been assigned to a safeguarding case by ' + (notifier||'the system') + '.\\n\\n'
+          + 'Student: ' + studentName + '\\nCategory: ' + category + '\\nCase reference: ' + caseId + '\\n\\n'
+          + 'Please log in to review the full case record, chronology and any outstanding actions.\\n\\n'
+          + 'This is an automated notification. Do not reply to this email.' });
+    } catch(err) { /* best-effort notification */ }
+  });
+  return { ok:true };
+}
+function notifyActionOwner(owner, caseId, studentName, actionText, notifier){
+  const u = findUserByName(owner);
+  if(!u || !u.email) return { ok:true };
+  try {
+    MailApp.sendEmail({ to:u.email, subject:'[Safeguarding] New action assigned to you – ' + studentName,
+      body:'A new action has been assigned to you by ' + (notifier||'the system') + '.\\n\\n'
+        + 'Student: ' + studentName + '\\nAction: ' + actionText + '\\nCase reference: ' + caseId + '\\n\\n'
+        + 'Please log in to review and complete this action.\\n\\nThis is an automated notification. Do not reply to this email.' });
+  } catch(err) { /* best-effort notification */ }
   return { ok:true };
 }
 
+// ── SEND case log (SENDCO / DSL / Principal) ────────────────────────────────
 function sendCaseHeaders(){
   return ['id','studentId','studentName','department','status','needArea','notes','loggedBy','loggedAt','updatedAt'];
 }
-function loadSendCases(){
-  const headers = sendCaseHeaders();
-  const sh = getOrCreateSheet(SHEET_SEND_CASES, headers);
-  const vals = sh.getDataRange().getValues();
-  const out = [];
-  for(let i=1;i<vals.length;i++){
-    const r = vals[i];
-    if(String(r.join('')).trim()==='') continue;
-    out.push({ id:r[0], studentId:r[1], studentName:r[2], department:r[3], status:r[4], needArea:r[5], notes:r[6], loggedBy:r[7], loggedAt:r[8], updatedAt:r[9] });
+function ensureSendCasesSheet(){ return getOrCreateSheet(SHEET_SEND_CASES, sendCaseHeaders()); }
+function getSendCasesFresh(){
+  const sh = ensureSendCasesSheet();
+  const rows = sh.getDataRange().getValues();
+  const list = [];
+  for(let i=1;i<rows.length;i++){
+    const row = rows[i];
+    if(String(row.join('')).trim()==='') continue;
+    list.push({ id:row[0], rowId:i+1, studentId:row[1]||'', studentName:row[2]||'', department:row[3]||'',
+      status:row[4]||'', needArea:row[5]||'', notes:row[6]||'', loggedBy:row[7]||'', loggedAt:row[8]||'', updatedAt:row[9]||'' });
   }
-  return out;
+  return { ok:true, data:list };
 }
-function saveSendCases(list){
-  const headers = sendCaseHeaders();
-  const sh = getOrCreateSheet(SHEET_SEND_CASES, headers);
-  sh.clearContents();
-  sh.getRange(1,1,1,headers.length).setValues([headers]);
-  if(!list || !list.length) return;
-  const rows = list.map(function(c){
-    return [c.id||'', c.studentId||'', c.studentName||'', c.department||'', c.status||'', c.needArea||'', c.notes||'', c.loggedBy||'', c.loggedAt||'', c.updatedAt||''];
+function getSendCases(sessionUser){
+  if(!isSendCaseRole(sessionUser.role)) return { ok:false, error:'You do not have permission to log SEND cases' };
+  return getSendCasesFresh();
+}
+function saveSendCase(sessionUser, payloadJson){
+  if(!isSendCaseRole(sessionUser.role)) return { ok:false, error:'You do not have permission to log SEND cases' };
+  let p = {}; try { p = JSON.parse(payloadJson || '{}'); } catch(e) {}
+  const studentName = norm(p.studentName), status = norm(p.status);
+  if(!studentName) return { ok:false, error:'Student name is required' };
+  if(!status) return { ok:false, error:'SEND status is required' };
+
+  return withLock(function(){
+    const sh = ensureSendCasesSheet();
+    const list = getSendCasesFresh().data;
+    const id = norm(p.id) || ('sc_' + Utilities.getUuid().replace(/-/g,'').slice(0,12));
+    const idx = list.findIndex(function(x){ return x.id === id; });
+    const loggedByName = norm((sessionUser.firstName||'') + ' ' + (sessionUser.lastName||'')) || 'Unknown';
+    const now = nowIso();
+    const row = [id, norm(p.studentId) || ('sid_' + studentName.replace(/\\W/g,'')), studentName, norm(p.department), status,
+      norm(p.needArea) || (idx>=0 ? (list[idx].needArea||'') : ''), norm(p.notes),
+      idx>=0 ? (list[idx].loggedBy||loggedByName) : loggedByName, idx>=0 ? (list[idx].loggedAt||now) : now, now];
+    if(idx >= 0) sh.getRange(list[idx].rowId, 1, 1, row.length).setValues([row]);
+    else sh.appendRow(row);
+    bumpDataVersion();
+    return { ok:true, id:id };
   });
-  sh.getRange(2,1,rows.length,headers.length).setValues(rows);
 }
-function getSendCasesAction(adminCode){
-  const auth = requireAdmin(adminCode);
-  if(!auth.ok) return { ok:false, error:auth.error };
-  return { ok:true, data: loadSendCases() };
-}
-function saveSendCaseAction(adminCode, payloadJson){
-  const auth = requireAdmin(adminCode);
-  if(!auth.ok) return { ok:false, error:auth.error };
-  let payload;
-  try{ payload = JSON.parse(payloadJson || '{}'); }catch(e){ return { ok:false, error:'Invalid payload' }; }
-  const name = norm(payload.studentName);
-  if(!name) return { ok:false, error:'Student name is required' };
-  if(!payload.status) return { ok:false, error:'SEND status is required' };
-  const list = loadSendCases();
-  const now = nowIso();
-  let idx = -1;
-  if(payload.id) idx = list.findIndex(function(x){ return x.id===payload.id; });
-  if(idx<0 && payload.studentId) idx = list.findIndex(function(x){ return x.studentId===payload.studentId; });
-  const who = ((auth.admin.firstName||'')+' '+(auth.admin.lastName||'')).trim() || 'Unknown';
-  if(idx>=0){
-    list[idx].studentId = payload.studentId || list[idx].studentId;
-    list[idx].studentName = name;
-    list[idx].department = payload.department || 'Primary';
-    list[idx].status = payload.status;
-    list[idx].needArea = payload.needArea || '';
-    list[idx].notes = payload.notes || '';
-    list[idx].updatedAt = now;
-    saveSendCases(list);
-    return { ok:true, data:list[idx] };
-  }
-  const entry = {
-    id: 'sc_' + Utilities.getUuid().replace(/-/g,'').slice(0,12),
-    studentId: payload.studentId || '',
-    studentName: name,
-    department: payload.department || 'Primary',
-    status: payload.status,
-    needArea: payload.needArea || '',
-    notes: payload.notes || '',
-    loggedBy: who,
-    loggedAt: now,
-    updatedAt: now
-  };
-  list.push(entry);
-  saveSendCases(list);
-  return { ok:true, data:entry };
-}
-function deleteSendCaseAction(adminCode, id){
-  const auth = requireAdmin(adminCode);
-  if(!auth.ok) return { ok:false, error:auth.error };
-  const list = loadSendCases().filter(function(x){ return x.id!==id; });
-  saveSendCases(list);
-  return { ok:true };
+function deleteSendCase(sessionUser, id){
+  if(!isSendCaseRole(sessionUser.role)) return { ok:false, error:'You do not have permission to log SEND cases' };
+  return withLock(function(){
+    const sh = ensureSendCasesSheet();
+    const list = getSendCasesFresh().data;
+    const idx = list.findIndex(function(x){ return x.id === id; });
+    if(idx<0) return { ok:false, error:'SEND case not found' };
+    sh.deleteRow(list[idx].rowId);
+    bumpDataVersion();
+    return { ok:true };
+  });
 }
 
+// ── SEND whole-school report (Lead DSL / Deputy DSL / Principal) ───────────
 function sendReportHeaders(){
-  return ['period','month','payloadJson','updatedBy','updatedAt'];
+  return ['period','month','overview','referrals','needs','stats','summary','updatedAt','updatedBy'];
 }
-function loadSendReports(){
-  const headers = sendReportHeaders();
-  const sh = getOrCreateSheet(SHEET_SEND_REPORTS, headers);
-  const vals = sh.getDataRange().getValues();
-  const out = [];
-  for(let i=1;i<vals.length;i++){
-    const r = vals[i];
+function ensureSendReportsSheet(){ return getOrCreateSheet(SHEET_SEND_REPORTS, sendReportHeaders()); }
+function getSendReport(sessionUser, period){
+  if(!isReportRole(sessionUser.role)) return { ok:false, error:'You do not have permission to access the whole-school report' };
+  const p = norm(period);
+  if(!p) return { ok:false, error:'Period is required' };
+  const sh = ensureSendReportsSheet();
+  const rows = sh.getDataRange().getValues();
+  for(let i=1;i<rows.length;i++){
+    if(String(rows[i][0])===p){
+      const row = rows[i];
+      return { ok:true, data:{ period:p, month:row[1]||'', overview:parseJsonCell(row[2],{}), referrals:parseJsonCell(row[3],{}),
+        needs:parseJsonCell(row[4],{}), stats:parseJsonCell(row[5],{}), summary:parseJsonCell(row[6],{}) } };
+    }
+  }
+  return { ok:true, data:{ period:p, month:'', overview:{}, referrals:{}, needs:{}, stats:{}, summary:{} } };
+}
+function saveSendReport(sessionUser, period, month, payloadJson){
+  if(!isReportRole(sessionUser.role)) return { ok:false, error:'You do not have permission to access the whole-school report' };
+  const p = norm(period);
+  if(!p) return { ok:false, error:'Period is required' };
+  let payload = {}; try { payload = JSON.parse(payloadJson || '{}'); } catch(e) {}
+
+  return withLock(function(){
+    const sh = ensureSendReportsSheet();
+    const rows = sh.getDataRange().getValues();
+    const row = [p, norm(month), JSON.stringify(payload.overview||{}), JSON.stringify(payload.referrals||{}),
+      JSON.stringify(payload.needs||{}), JSON.stringify(payload.stats||{}), JSON.stringify(payload.summary||{}),
+      nowIso(), norm((sessionUser.firstName||'')+' '+(sessionUser.lastName||''))];
+    for(let i=1;i<rows.length;i++){
+      if(String(rows[i][0])===p){ sh.getRange(i+1,1,1,row.length).setValues([row]); bumpDataVersion(); return { ok:true }; }
+    }
+    sh.appendRow(row);
+    bumpDataVersion();
+    return { ok:true };
+  });
+}
+
+// ── Cases ────────────────────────────────────────────────────────────────
+function caseHeaders(){
+  return ['id','timestamp','reporter','studentId','studentName','year','category','subcategory','risk','status',
+    'description','location','assignee','department','strategies','agencies','bodyMap','timeline','actions',
+    'strategyImpactPositive','strategyImpactNone','sendcoReason','strategyDuration','linkedCaseIds'];
+}
+function ensureCasesSheet(){ return getOrCreateSheet(SHEET_CASES, caseHeaders()); }
+function parseJsonCell(value, fallback){
+  if(value===undefined || value===null || value==='') return fallback;
+  if(typeof value === 'object') return value;
+  try { return JSON.parse(value); } catch(e) { return fallback; }
+}
+function isModernCaseRow(row){
+  if(!row || row.length < 19) return false;
+  const id = String(row[0] || '');
+  const studentId = String(row[3] || '');
+  const hasJsonColumns = Array.isArray(parseJsonCell(row[15],null)) || Array.isArray(parseJsonCell(row[16],null)) ||
+    Array.isArray(parseJsonCell(row[17],null)) || Array.isArray(parseJsonCell(row[18],null));
+  return id.indexOf('c_')===0 || studentId.indexOf('s_')===0 || hasJsonColumns;
+}
+function getCasesFresh(){
+  const sh = ensureCasesSheet();
+  const rows = sh.getDataRange().getValues();
+  const headers = rows[0] || [];
+  const hasJsonHeader = headers.indexOf('payloadJson') >= 0 || headers.indexOf('actions') >= 0;
+  const byId = {};
+  for(let i=1;i<rows.length;i++){
+    const row = rows[i];
+    if(String(row.join('')).trim()==='') continue;
+    const modernRow = hasJsonHeader || isModernCaseRow(row);
+    if(modernRow){
+      const c = {
+        id: row[0] || ('c_'+i), date:row[1]||'', reporter:row[2]||'', studentId:row[3]||'', studentName:row[4]||'',
+        year:row[5]||'', category:row[6]||'', subcategory:row[7]||'', risk:row[8]||'Medium', status:row[9]||'New',
+        description:row[10]||'', location:row[11]||'', assignee:row[12]||'', department:row[13]||'',
+        strategies:parseJsonCell(row[14],[]), agencies:parseJsonCell(row[15],[]), bodyMap:parseJsonCell(row[16],[]),
+        timeline:parseJsonCell(row[17],[]), actions:parseJsonCell(row[18],[]), strategyImpactPositive:row[19]||'',
+        strategyImpactNone:row[20]||'', sendcoReason:row[21]||'', strategyDuration:row[22]||'',
+        linkedCaseIds: parseJsonCell(row[23], [])
+      };
+      byId[c.id] = {
+        id:c.id, rowId:i+1, timestamp:c.date, reporterName:c.reporter, studentId:c.studentId, studentName:c.studentName,
+        grade:c.year, category:c.category, severity:c.risk, description:c.description, location:c.location,
+        status:c.status, assignee:c.assignee, department:c.department, strategies:c.strategies,
+        agencies: Array.isArray(c.agencies) ? c.agencies.join(',') : String(c.agencies||''),
+        bodyMap:c.bodyMap, timeline:c.timeline, actions:c.actions, strategyImpactPositive:c.strategyImpactPositive,
+        strategyImpactNone:c.strategyImpactNone, sendcoReason:c.sendcoReason, strategyDuration:c.strategyDuration,
+        linkedCaseIds:c.linkedCaseIds, payload:c
+      };
+      continue;
+    }
+    const legacyId = row[0] || ('legacy_'+(i+1));
+    byId[legacyId] = { id:legacyId, rowId:i+1, timestamp:row[0], reporterName:row[1], studentId:'', studentName:row[5],
+      grade:row[6], category:row[11], severity:row[12]||'', description:row[12], location:'', status:row[20]||'New',
+      assignee:row[21]||'', agencies:row[22]||'', linkedCaseIds:[] };
+  }
+  return { ok:true, status:'success', data: Object.keys(byId).map(function(k){ return byId[k]; }) };
+}
+function getCases(){
+  const cached = cacheGetJson('cases_meta', 'cases_chunk_');
+  if(cached) return { ok:true, status:'success', data:cached, version:getDataVersion() };
+  const result = getCasesFresh();
+  if(result.ok) cachePutJson('cases_meta', 'cases_chunk_', result.data);
+  result.version = getDataVersion();
+  return result;
+}
+
+function normalizeCasePayload(p){
+  return {
+    id: p.id || ('c_'+Utilities.getUuid().replace(/-/g,'').slice(0,12)), date:p.date||nowIso(), reporter:p.reporter||'',
+    studentId:p.studentId||'', studentName:p.studentName||'', year:p.year||'', category:p.category||'',
+    subcategory:p.subcategory||'', risk:p.risk||'Medium', status:p.status||'New', description:p.description||'',
+    location:p.location||'', assignee:p.assignee||'', department:p.department||'',
+    strategies: Array.isArray(p.strategies) ? p.strategies : String(p.strategies||'').split(',').filter(Boolean),
+    agencies: Array.isArray(p.agencies) ? p.agencies : String(p.agencies||'').split(',').filter(Boolean),
+    bodyMap: Array.isArray(p.bodyMap) ? p.bodyMap : [], timeline: Array.isArray(p.timeline) ? p.timeline : [],
+    actions: Array.isArray(p.actions) ? p.actions : [], strategyImpactPositive:p.strategyImpactPositive||'',
+    strategyImpactNone:p.strategyImpactNone||'', sendcoReason:p.sendcoReason||'', strategyDuration:p.strategyDuration||'',
+    linkedCaseIds: Array.isArray(p.linkedCaseIds) ? p.linkedCaseIds.filter(Boolean) : []
+  };
+}
+function upsertCaseRecord(payload){
+  return withLock(function(){
+    const sh = ensureCasesSheet();
+    const cases = getCasesFresh().data || [];
+    const c = normalizeCasePayload(payload);
+    const idx = cases.findIndex(function(x){ return x.id === c.id; });
+    const row = [c.id,c.date,c.reporter,c.studentId,c.studentName,c.year,c.category,c.subcategory,c.risk,c.status,
+      c.description,c.location,c.assignee,c.department,JSON.stringify(c.strategies),JSON.stringify(c.agencies),
+      JSON.stringify(c.bodyMap),JSON.stringify(c.timeline),JSON.stringify(c.actions),c.strategyImpactPositive,
+      c.strategyImpactNone,c.sendcoReason,c.strategyDuration,JSON.stringify(c.linkedCaseIds)];
+    let rowId;
+    if(idx >= 0){ rowId = Number(cases[idx].rowId || (idx+2)); sh.getRange(rowId,1,1,row.length).setValues([row]); }
+    else { sh.appendRow(row); rowId = sh.getLastRow(); }
+    bumpDataVersion();
+    return { ok:true, rowId:rowId, case:c };
+  });
+}
+function updateCaseStatus(rowId, caseId, status){
+  const data = getCasesFresh().data || [];
+  const c = data.find(function(x){ return String(x.rowId)===String(rowId) || x.id===caseId; });
+  if(!c) return { ok:false, error:'Case not found' };
+  const payload = c.payload || normalizeCasePayload({
+    id:c.id, date:c.timestamp, reporter:c.reporterName, studentName:c.studentName, year:c.grade, category:c.category,
+    subcategory:'', risk:c.severity, status:status, description:c.description, location:'', assignee:c.assignee,
+    agencies:(c.agencies||'').split(',').filter(Boolean), bodyMap:c.bodyMap||[], timeline:c.timeline||[], actions:c.actions||[],
+    linkedCaseIds:c.linkedCaseIds||[]
+  });
+  payload.status = status;
+  return upsertCaseRecord(payload);
+}
+function deleteCaseAction(caseId, rowId){
+  return withLock(function(){
+    const sh = ensureCasesSheet();
+    const data = getCasesFresh().data || [];
+    const idx = data.findIndex(function(x){ return String(x.rowId)===String(rowId) || x.id===caseId; });
+    if(idx<0) return { ok:false, error:'Case not found' };
+    sh.deleteRow(data[idx].rowId);
+    bumpDataVersion();
+    return { ok:true, status:'success' };
+  });
+}
+// ── Students (durable per-student metadata — familyId etc.) ────────────────
+// Student name/year/form/keyAdult remain derived from case rows client-side,
+// same as before; this sheet only holds fields with no natural home on a
+// case, so they survive index.html's rebuildStudentsFromCases().
+function studentsHeaders(){ return ['id','familyId','notes','createdAt','updatedAt']; }
+function ensureStudentsSheet(){ return getOrCreateSheet(SHEET_STUDENTS, studentsHeaders()); }
+function loadStudentMetaMap(){
+  const sh = ensureStudentsSheet();
+  const rows = sh.getDataRange().getValues();
+  const map = {};
+  for(let i=1;i<rows.length;i++){
+    const r = rows[i];
     if(String(r.join('')).trim()==='') continue;
-    out.push({ period:r[0], month:r[1], payloadJson:r[2], updatedBy:r[3], updatedAt:r[4] });
+    map[r[0]] = { id:r[0], rowId:i+1, familyId:r[1]||'', notes:r[2]||'', createdAt:r[3]||'', updatedAt:r[4]||'' };
   }
-  return out;
+  return map;
 }
-function saveSendReports(list){
-  const headers = sendReportHeaders();
-  const sh = getOrCreateSheet(SHEET_SEND_REPORTS, headers);
-  sh.clearContents();
-  sh.getRange(1,1,1,headers.length).setValues([headers]);
-  if(!list || !list.length) return;
-  const rows = list.map(function(r){ return [r.period||'', r.month||'', r.payloadJson||'', r.updatedBy||'', r.updatedAt||'']; });
-  sh.getRange(2,1,rows.length,headers.length).setValues(rows);
+function listStudentMeta(){
+  const map = loadStudentMetaMap();
+  return { ok:true, data: Object.keys(map).map(function(k){ const m=map[k]; return { id:m.id, familyId:m.familyId, notes:m.notes }; }) };
 }
-function getSendReportAction(adminCode, period){
-  const auth = requireAdmin(adminCode);
-  if(!auth.ok) return { ok:false, error:auth.error };
-  const list = loadSendReports();
-  const row = list.find(function(r){ return r.period===period; });
-  if(!row) return { ok:true, data:null };
-  let payload = {};
-  try{ payload = JSON.parse(row.payloadJson || '{}'); }catch(e){ payload = {}; }
-  payload.month = row.month;
-  return { ok:true, data:payload };
-}
-function saveSendReportAction(adminCode, period, month, payloadJson){
-  const auth = requireAdmin(adminCode);
-  if(!auth.ok) return { ok:false, error:auth.error };
-  if(!period) return { ok:false, error:'Missing period' };
-  const list = loadSendReports();
-  const now = nowIso();
-  const who = ((auth.admin.firstName||'')+' '+(auth.admin.lastName||'')).trim() || 'Unknown';
-  const idx = list.findIndex(function(r){ return r.period===period; });
-  const row = { period:period, month:month||'', payloadJson:payloadJson||'{}', updatedBy:who, updatedAt:now };
-  if(idx>=0) list[idx]=row; else list.push(row);
-  saveSendReports(list);
-  return { ok:true };
+function saveStudentMetaAction(sessionUser, studentId, familyId, notes){
+  const sid = norm(studentId);
+  if(!sid) return { ok:false, error:'Student id is required' };
+  const notesV = validateString(notes || '', 0, NOTES_MAX_LENGTH);
+  if(!notesV.valid) return { ok:false, error:'Notes: ' + notesV.error };
+  return withLock(function(){
+    const sh = ensureStudentsSheet();
+    const map = loadStudentMetaMap();
+    const now = nowIso();
+    const row = [sid, norm(familyId), notesV.value, map[sid] ? map[sid].createdAt : now, now];
+    if(map[sid]) sh.getRange(map[sid].rowId,1,1,row.length).setValues([row]);
+    else sh.appendRow(row);
+    bumpDataVersion();
+    return { ok:true };
+  });
 }
 
-function findUserByFullName(name){
-  const n = normLower(name);
-  if(!n) return null;
-  const users = loadUsers();
-  return users.find(function(u){ return normLower((u.firstName||'')+' '+(u.lastName||''))===n; }) || null;
+// ── Families ─────────────────────────────────────────────────────────────
+function familiesHeaders(){ return ['familyId','familyName','studentIds','notes','createdAt','updatedAt']; }
+function ensureFamiliesSheet(){ return getOrCreateSheet(SHEET_FAMILIES, familiesHeaders()); }
+function listFamilies(){
+  const sh = ensureFamiliesSheet();
+  const rows = sh.getDataRange().getValues();
+  const list = [];
+  for(let i=1;i<rows.length;i++){
+    const r = rows[i];
+    if(String(r.join('')).trim()==='') continue;
+    list.push({ familyId:r[0], rowId:i+1, familyName:r[1]||'', studentIds:parseJsonCell(r[2],[]), notes:r[3]||'', createdAt:r[4]||'', updatedAt:r[5]||'' });
+  }
+  return { ok:true, data:list };
 }
-function sendNotifyEmail(toUser, subject, body){
-  if(!toUser || !toUser.email) return false;
-  try{ MailApp.sendEmail(toUser.email, subject, body); return true; }catch(e){ return false; }
+function saveFamilyAction(sessionUser, payloadJson){
+  let p = {}; try { p = JSON.parse(payloadJson || '{}'); } catch(e) {}
+  const nameV = validateString(p.familyName, 1, NAME_MAX_LENGTH);
+  if(!nameV.valid) return { ok:false, error:'Family name: ' + nameV.error };
+  return withLock(function(){
+    const sh = ensureFamiliesSheet();
+    const existing = listFamilies().data;
+    const familyId = norm(p.familyId) || ('fam_'+Utilities.getUuid().replace(/-/g,'').slice(0,10));
+    const idx = existing.findIndex(function(x){ return x.familyId===familyId; });
+    const now = nowIso();
+    const row = [familyId, nameV.value, JSON.stringify(Array.isArray(p.studentIds)?p.studentIds.filter(Boolean):[]),
+      norm(p.notes), idx>=0 ? existing[idx].createdAt : now, now];
+    if(idx>=0) sh.getRange(existing[idx].rowId,1,1,row.length).setValues([row]);
+    else sh.appendRow(row);
+    bumpDataVersion();
+    return { ok:true, familyId:familyId };
+  });
 }
-function notifyAssigneeAction(p){
-  const u = findUserByFullName(p.assignee);
-  const subject = 'Safeguarding concern assigned: ' + (p.studentName||'');
-  const body = (p.notifier||'Someone') + ' assigned you a ' + (p.category||'safeguarding') + ' concern for ' + (p.studentName||'a student') + '. Case reference: ' + (p.caseId||'');
-  const sent = sendNotifyEmail(u, subject, body);
-  return { ok:true, notified:sent };
-}
-function notifyActionOwnerAction(p){
-  const u = findUserByFullName(p.owner);
-  const subject = 'Safeguarding action assigned: ' + (p.studentName||'');
-  const body = (p.notifier||'Someone') + ' assigned you an action for ' + (p.studentName||'a student') + ': ' + (p.actionText||'') + '. Case reference: ' + (p.caseId||'');
-  const sent = sendNotifyEmail(u, subject, body);
-  return { ok:true, notified:sent };
+function deleteFamilyAction(sessionUser, familyId){
+  const fid = norm(familyId);
+  if(!fid) return { ok:false, error:'Family id is required' };
+  return withLock(function(){
+    const sh = ensureFamiliesSheet();
+    const existing = listFamilies().data;
+    const idx = existing.findIndex(function(x){ return x.familyId===fid; });
+    if(idx<0) return { ok:false, error:'Family not found' };
+    sh.deleteRow(existing[idx].rowId);
+    bumpDataVersion();
+    return { ok:true };
+  });
 }
 
+// ── HTTP entry points ───────────────────────────────────────────────────────
+// Every action is POST-only: access codes and session tokens must never
+// appear in a URL (Apps Script logs GET query strings). doGet exists only
+// to answer with a clear error instead of a silent failure.
 function doGet(e){
-  try {
-    const action = norm(e && e.parameter && e.parameter.action) || 'getCases';
-    if(action==='getCases') return jsonOut(getCasesAction());
-    if(action==='login') return jsonOut(loginByCode(e.parameter.code));
-    if(action==='listUsers') return jsonOut(listUsers(e.parameter.adminCode));
-    if(action==='saveUser') return jsonOut(saveUserAction(e.parameter.adminCode, e.parameter.id, e.parameter.firstName, e.parameter.lastName, e.parameter.role));
-    if(action==='regenUserCode') return jsonOut(regenUserCode(e.parameter.adminCode, e.parameter.id));
-    if(action==='toggleUser') return jsonOut(toggleUser(e.parameter.adminCode, e.parameter.id));
-    if(action==='deleteUser') return jsonOut(deleteUser(e.parameter.adminCode, e.parameter.id));
-    if(action==='getSendCases') return jsonOut(getSendCasesAction(e.parameter.adminCode));
-    if(action==='saveSendCase') return jsonOut(saveSendCaseAction(e.parameter.adminCode, e.parameter.payload));
-    if(action==='deleteSendCase') return jsonOut(deleteSendCaseAction(e.parameter.adminCode, e.parameter.id));
-    if(action==='getSendReport') return jsonOut(getSendReportAction(e.parameter.adminCode, e.parameter.period));
-    if(action==='saveSendReport') return jsonOut(saveSendReportAction(e.parameter.adminCode, e.parameter.period, e.parameter.month, e.parameter.payload));
-    if(action==='notifyAssignee') return jsonOut(notifyAssigneeAction(e.parameter));
-    if(action==='notifyActionOwner') return jsonOut(notifyActionOwnerAction(e.parameter));
-    return jsonOut({ ok:false, error:'Unknown action' });
-  } catch(err){
-    return jsonOut({ ok:false, error:String(err) });
-  }
+  return jsonOut({ ok:false, error:'This API only accepts POST requests.' });
 }
 
 function doPost(e){
   try{
     const p = JSON.parse((e && e.postData && e.postData.contents) || '{}');
-    if(p.action==='syncCase' && p.payload) return jsonOut(syncCaseAction(p.payload));
-    if(p.action==='deleteCase' && p.caseId) return jsonOut(deleteCaseAction(p.caseId));
-    return jsonOut({ ok:true, status:'success' });
+    const action = norm(p.action);
+    if(!action) return jsonOut({ ok:false, error:'Missing action' });
+
+    if(action === 'login') return jsonOut(rateLimited(p.code, function(){ return loginByCode(p.code); }));
+
+    const session = requireSession(p.token);
+    if(!session.ok) return jsonOut(session);
+    const user = session.user;
+
+    switch(action){
+      case 'logout': return jsonOut(logoutAction(p.token));
+      case 'changeOwnCode': return jsonOut(changeOwnCode(user, p.currentCode, p.newCode));
+      case 'updateOwnProfile': return jsonOut(updateOwnProfile(user, p.firstName, p.lastName));
+      case 'getVersion': return jsonOut({ ok:true, version:getDataVersion() });
+      case 'getCases': return jsonOut(getCases());
+      case 'syncCase': return jsonOut(upsertCaseRecord(p.payload));
+      case 'updateStatus': return jsonOut(updateCaseStatus(p.rowId, p.caseId, p.status));
+      case 'deleteCase': return jsonOut(deleteCaseAction(p.caseId, p.rowId));
+      case 'notifyAssignee': return jsonOut(notifyAssignee(p.assignee, p.caseId, p.studentName, p.category, p.notifier));
+      case 'notifyActionOwner': return jsonOut(notifyActionOwner(p.owner, p.caseId, p.studentName, p.actionText, p.notifier));
+      case 'getSendReport': return jsonOut(getSendReport(user, p.period));
+      case 'saveSendReport': return jsonOut(saveSendReport(user, p.period, p.month, p.payload));
+      case 'getSendCases': return jsonOut(getSendCases(user));
+      case 'saveSendCase': return jsonOut(saveSendCase(user, p.payload));
+      case 'deleteSendCase': return jsonOut(deleteSendCase(user, p.id));
+      case 'listUsers': return jsonOut(listUsers(user));
+      case 'saveUser': return jsonOut(saveUserAction(user, p.id, p.firstName, p.lastName, p.role));
+      case 'regenUserCode': return jsonOut(regenUserCode(user, p.id));
+      case 'toggleUser': return jsonOut(toggleUser(user, p.id));
+      case 'deleteUser': return jsonOut(deleteUser(user, p.id));
+      case 'listStudentMeta': return jsonOut(listStudentMeta());
+      case 'saveStudentMeta': return jsonOut(saveStudentMetaAction(user, p.studentId, p.familyId, p.notes));
+      case 'listFamilies': return jsonOut(listFamilies());
+      case 'saveFamily': return jsonOut(saveFamilyAction(user, p.payload));
+      case 'deleteFamily': return jsonOut(deleteFamilyAction(user, p.familyId));
+      default: return jsonOut({ ok:false, error:'Unknown action' });
+    }
   }catch(err){
     return jsonOut({ ok:false, error:String(err) });
   }
@@ -3495,18 +4258,27 @@ function copyScript(){ navigator.clipboard?.writeText(APPSCRIPT).then(()=>toast(
 
 // ---------- AUTH — ACCESS CODE LOGIN ----------
 
-async function scriptGet(action, params={}){
+// Every authenticated call goes through here: POST body (never a URL query
+// string, so codes/tokens never end up in Apps Script logs or browser
+// history), text/plain content-type (keeps this a CORS "simple request" —
+// Apps Script Web Apps can't answer a preflight). ME.token is attached to
+// every call automatically; the 'login' action is the only one the server
+// accepts without a valid session.
+async function scriptCall(action, params={}){
   if(!CAN_USE_APPS_SCRIPT()) throw new Error('Apps Script URL not configured');
-  const url = new URL(SCRIPT_URL);
-  url.searchParams.set('action', action);
-  Object.entries(params || {}).forEach(([k,v])=>{
-    if(v !== undefined && v !== null) url.searchParams.set(k, String(v));
+  const body = Object.assign({ action, token: ME.token }, params);
+  const res = await fetch(SCRIPT_URL, {
+    method:'POST',
+    headers:{ 'Content-Type':'text/plain;charset=utf-8' },
+    body: JSON.stringify(body)
   });
-  const res = await fetch(url.toString(), { method:'GET' });
   const text = await res.text();
   let data;
   try { data = JSON.parse(text); }
   catch(_e){ throw new Error('Invalid Apps Script response'); }
+  if(data && data.ok===false && data.code==='AUTH' && action!=='login'){
+    handleSessionExpired();
+  }
   return data;
 }
 
@@ -3585,33 +4357,27 @@ async function doCodeLogin(){
   }
   
   try {
-    let data;
-    if(USE_NODE_API()){
-      const response = await fetch(apiUrl('/api/login'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code })
-      });
-      data = await response.json();
-    } else if(CAN_USE_APPS_SCRIPT()){
-      data = await scriptGet('login', { code });
-    } else {
-      authShowMessage('code', 'Configure either API Base URL or Apps Script URL in Settings.', 'error');
+    if(!CAN_USE_APPS_SCRIPT()){
+      authShowMessage('code', 'Configure the Apps Script URL in Settings.', 'error');
       return;
     }
-    
+    const data = await scriptCall('login', { code });
+
     if(!data.ok){
       authShowMessage('code', data.error || 'Invalid access code', 'error');
       $('loginCode')?.focus();
       return;
     }
-    
-    // Login successful
+
+    // Login successful. ME.code is only ever held in memory for this
+    // session's lifetime (never persisted) — the server issued an opaque
+    // token, which is what gets stored and sent on every future call.
     ME.name = [data.user.firstName, data.user.lastName].filter(Boolean).join(' ') || 'User';
     ME.role = data.user.role;
     ME.userId = data.user.id;
     ME.code = code;
-    
+    ME.token = data.token;
+
     authShowMessage('code', 'Access granted! Welcome, ' + ME.name.split(' ')[0], 'success');
 
     // Enter the app immediately after successful auth to avoid overlay race conditions.
@@ -3643,19 +4409,19 @@ async function doCodeLogin(){
   }
 }
 
-const authHeader = ()=> ({ 'Content-Type':'application/json', 'Authorization':`Bearer ${ME.code}` });
-
-function persistSession(){
-  LS.set('ics_auth', JSON.stringify({
-    name: ME.name,
-    role: ME.role,
-    userId: ME.userId,
-    code: ME.code,
+// ics_session holds ONLY the opaque token + display fields — never the
+// access code (replaces the old ics_auth, which stored the code in plaintext).
+function saveSessionStorage(){
+  LS.set('ics_session', JSON.stringify({
+    name: ME.name, role: ME.role, userId: ME.userId, token: ME.token,
     expires: new Date(Date.now()+8*3600000).toISOString()
   }));
   LS.set('ics_name', ME.name);
   LS.set('ics_role', ME.role);
+}
 
+function persistSession(){
+  saveSessionStorage();
   hideAuthOverlay();
   paintUser();
   applyRoleLayout();
@@ -3663,6 +4429,8 @@ function persistSession(){
   go('dashboard');
   if(SOURCE==='live' && SCRIPT_URL) syncData();
   loadAppUsers();
+  loadFamilies();
+  resetIdleTimer();
 }
 
 function hideAuthOverlay(){
@@ -3673,25 +4441,72 @@ function hideAuthOverlay(){
 }
 
 function checkSavedAuth(){
-  const raw=LS.get('ics_auth');
+  const raw=LS.get('ics_session');
   if(!raw) return false;
   try{
     const s=JSON.parse(raw);
-    if(s.expires && new Date(s.expires)>new Date()){
+    if(s.expires && new Date(s.expires)>new Date() && s.token){
       ME.name=s.name||''; ME.role=s.role||'Teacher';
-      ME.userId=s.userId||''; ME.code=s.code||'';
+      ME.userId=s.userId||''; ME.token=s.token||'';
       return true;
     }
   }catch(e){}
   return false;
 }
 
+// ---------- Idle timeout (server-side session TTL is the real backstop —
+// this just gives the user a warning before the client gives up) ----------
+const IDLE_WARN_MS = 18*60000;
+const IDLE_LOGOUT_MS = 20*60000;
+let idleWarnTimer=null, idleLogoutTimer=null, idleCountdownInterval=null;
+function resetIdleTimer(){
+  if(!ME.token) return;
+  clearTimeout(idleWarnTimer); clearTimeout(idleLogoutTimer);
+  hideIdleWarning();
+  idleWarnTimer = setTimeout(showIdleWarning, IDLE_WARN_MS);
+  idleLogoutTimer = setTimeout(()=>{ signOut(); toast('Signed out after 20 minutes of inactivity','info'); }, IDLE_LOGOUT_MS);
+}
+function stopIdleTimer(){
+  clearTimeout(idleWarnTimer); clearTimeout(idleLogoutTimer);
+  hideIdleWarning();
+}
+function showIdleWarning(){
+  const modal = $('idleWarnModal'); if(!modal) return;
+  modal.classList.remove('hidden');
+  requestAnimationFrame(()=> modal.style.opacity='1');
+  let secondsLeft = Math.round((IDLE_LOGOUT_MS-IDLE_WARN_MS)/1000);
+  const upd = ()=>{ const el=$('idleCountdown'); if(el) el.textContent = secondsLeft+'s'; };
+  upd();
+  clearInterval(idleCountdownInterval);
+  idleCountdownInterval = setInterval(()=>{ secondsLeft--; upd(); if(secondsLeft<=0) clearInterval(idleCountdownInterval); }, 1000);
+}
+function hideIdleWarning(){
+  const modal = $('idleWarnModal'); if(!modal) return;
+  modal.style.opacity='0';
+  setTimeout(()=>modal.classList.add('hidden'), 200);
+  clearInterval(idleCountdownInterval);
+}
+function staySignedIn(){ resetIdleTimer(); toast('Session extended','success'); }
+function initIdleWatchers(){
+  ['mousemove','keydown','click','touchstart','scroll'].forEach(function(evt){
+    document.addEventListener(evt, function(){
+      if($('idleWarnModal') && !$('idleWarnModal').classList.contains('hidden')) return;
+      resetIdleTimer();
+    }, { passive:true });
+  });
+}
+
 function signOut(){
+  stopIdleTimer();
+  if(ME.token && CAN_USE_APPS_SCRIPT()){
+    scriptCall('logout', {}).catch(()=>{}); // best-effort; local state is cleared regardless
+  }
+
   // Clear session storage
-  LS.set('ics_auth','');
+  LS.set('ics_session','');
   LS.set('ics_name','');
   LS.set('ics_role','');
-  
+
   // Reset user state
   LS.set('ics_db','');
   DB = { students:[], cases:[], audit:[] };
@@ -3700,16 +4515,17 @@ function signOut(){
   ME.role = 'Teacher';
   ME.userId = '';
   ME.code = '';
-  
+  ME.token = '';
+
   // Clear auth inputs
   const loginCode = $('loginCode');
   if(loginCode) loginCode.value = '';
   authShowCharCount();
-  
+
   // Clear any messages
   const codeMsg = $('authCodeMessage');
   if(codeMsg) codeMsg.classList.add('hidden');
-  
+
   // Show auth overlay
   const overlay = $('authOverlay');
   if(overlay){
@@ -3717,26 +4533,40 @@ function signOut(){
     overlay.style.opacity = '1';
     overlay.style.pointerEvents = 'auto';
   }
-  
+
   // Reset to code mode
   authSetMode('code');
-  
+
   // Hide main UI
   const sidebar = document.querySelector('aside');
   if(sidebar) sidebar.classList.add('hidden');
   const bottomNav = $('mobileBottomNav');
   if(bottomNav) bottomNav.classList.add('hidden');
-  
+
   // Hide admin nav
   document.querySelectorAll('.admin-nav').forEach(el => el.classList.add('hidden'));
-  
+
   // Focus on code input for accessibility
   setTimeout(() => {
     const el = $('loginCode');
     if(el) el.focus();
   }, 200);
-  
+
   icons();
+}
+
+// handleSessionExpired: the server told us the token is invalid/expired
+// mid-session (not via the idle timer) — e.g. it expired server-side while
+// the tab was backgrounded, or was revoked. Same end state as signOut(),
+// but skips the (redundant, already-failed) server logout call and says why.
+function handleSessionExpired(){
+  if(!ME.token) return; // already signed out
+  stopIdleTimer();
+  LS.set('ics_session','');
+  ME.token = '';
+  toast('Your session expired. Please sign in again.', 'warning');
+  const overlay = $('authOverlay');
+  if(overlay){ overlay.classList.remove('hidden'); overlay.style.opacity='1'; overlay.style.pointerEvents='auto'; }
 }
 
 function applyRoleLayout(){
@@ -3760,18 +4590,130 @@ function applyRoleLayout(){
 // ---------- USER MANAGEMENT (admin) ----------
 // Fetches the user roster into APP_USERS so assignee/owner dropdowns are populated
 // as soon as a DSL user logs in, without requiring a visit to the Users page first.
+// ---------- FAMILIES (Work Item 5) ----------
+async function loadFamilies(){
+  if(!CAN_USE_APPS_SCRIPT()) return;
+  try{
+    const res = await scriptCall('listFamilies', {});
+    if(res && res.ok) FAMILIES = res.data || [];
+  }catch(e){ /* non-fatal — families view just shows stale/empty until next load */ }
+}
+function familyNameById(familyId){
+  const f = FAMILIES.find(x=>x.familyId===familyId);
+  return f ? f.familyName : '';
+}
+// Nice-to-have alert: flag a family whose siblings have racked up several
+// open concerns between them recently — a pattern that's easy to miss when
+// each concern is only ever viewed one child at a time.
+const FAMILY_ALERT_WINDOW_DAYS = 90;
+const FAMILY_ALERT_THRESHOLD = 3;
+function familyAlertCount(family){
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-FAMILY_ALERT_WINDOW_DAYS);
+  let count = 0;
+  (family.studentIds||[]).forEach(sid=>{
+    casesForStudent(sid).forEach(c=>{ if(isOpen(c) && new Date(c.date) >= cutoff) count++; });
+  });
+  return count >= FAMILY_ALERT_THRESHOLD ? count : 0;
+}
+function renderFamilies(){
+  const el = $('familiesList'); if(!el) return;
+  if(!FAMILIES.length){ el.innerHTML = emptyState('git-branch','No families yet','Group siblings together to see their combined safeguarding picture.'); icons(); return; }
+  el.innerHTML = FAMILIES.map(f=>{
+    const members = (f.studentIds||[]).map(sid=>studentById(sid)).filter(Boolean);
+    const totalOpen = members.reduce((n,s)=> n + casesForStudent(s.id).filter(isOpen).length, 0);
+    const alertCount = familyAlertCount(f);
+    return `<div class="px-5 py-4 hover:bg-dim/40 transition-colors">
+      <div class="flex items-center justify-between gap-3 mb-2.5">
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="w-10 h-10 rounded-full bg-brandSoft text-onBrandSoft grid place-items-center shrink-0"><i data-lucide="git-branch" class="w-4.5 h-4.5"></i></div>
+          <div class="min-w-0"><div class="font-bold text-sm text-ink truncate">${esc(f.familyName)}</div>
+          <div class="text-[11px] text-slate-400 font-medium">${members.length} student${members.length!==1?'s':''} · ${totalOpen} open concern${totalOpen!==1?'s':''}</div></div>
+        </div>
+        <div class="flex items-center gap-1 shrink-0">
+          ${alertCount ? `<span title="${alertCount} open concerns across this family in the last ${FAMILY_ALERT_WINDOW_DAYS} days" class="text-[10px] font-bold px-2 py-1 rounded-full bg-critSoft text-crit flex items-center gap-1"><i data-lucide="alert-triangle" class="w-3 h-3"></i>${alertCount} in ${FAMILY_ALERT_WINDOW_DAYS}d</span>` : ''}
+          <button onclick="openFamilyEditor('${f.familyId}')" title="Edit" class="w-9 h-9 rounded-full hover:bg-dim text-slate-400 hover:text-brand grid place-items-center"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+          <button onclick="deleteFamily('${f.familyId}')" title="Delete grouping" class="w-9 h-9 rounded-full hover:bg-critSoft text-slate-400 hover:text-crit grid place-items-center"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-1.5">${members.map(s=>{ const r=studentRisk(s.id); return `<button onclick="openStudent('${s.id}')" class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-${r.color}Soft text-${r.color}">${esc(s.name)}</button>`; }).join('') || '<span class="text-[11px] text-slate-300 font-medium italic">No students linked yet</span>'}</div>
+      ${f.notes?`<p class="text-xs text-slate-500 font-medium mt-2">${esc(f.notes)}</p>`:''}
+    </div>`;
+  }).join('');
+  icons();
+}
+let famSelectedStudentIds = new Set();
+let famOriginalStudentIds = [];
+function openFamilyEditor(familyId){
+  const f = familyId ? FAMILIES.find(x=>x.familyId===familyId) : null;
+  $('familyModalTitle').textContent = f ? 'Edit family' : 'New family';
+  $('famEditId').value = f ? f.familyId : '';
+  $('famName').value = f ? f.familyName : '';
+  $('famNotes').value = f ? (f.notes||'') : '';
+  famOriginalStudentIds = f ? (f.studentIds||[]).slice() : [];
+  famSelectedStudentIds = new Set(famOriginalStudentIds);
+  const search = $('famStudentSearch'); if(search) search.value='';
+  renderFamilyStudentPicker();
+  openModal('familyModal');
+}
+function renderFamilyStudentPicker(){
+  const q = ($('famStudentSearch')?.value||'').toLowerCase();
+  const editingFamilyId = $('famEditId')?.value || '';
+  const list = DB.students.filter(s=> !q || s.name.toLowerCase().includes(q)).sort((a,b)=> a.name.localeCompare(b.name));
+  $('famStudentPicker').innerHTML = list.map(s=>{
+    const checked = famSelectedStudentIds.has(s.id);
+    const otherFamily = s.familyId && s.familyId!==editingFamilyId ? familyNameById(s.familyId) : '';
+    return `<label class="flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-dim/40 cursor-pointer">
+      <input type="checkbox" ${checked?'checked':''} onchange="toggleFamilyStudent('${s.id}', this.checked)" class="w-4 h-4 rounded accent-brand shrink-0">
+      <span class="flex-1 min-w-0 font-medium text-ink truncate">${esc(s.name)}</span>
+      ${otherFamily?`<span class="text-[10px] text-slate-400 font-semibold shrink-0">in ${esc(otherFamily)}</span>`:''}
+    </label>`;
+  }).join('') || '<div class="px-3 py-6 text-center text-xs text-slate-400 font-semibold">No students found</div>';
+}
+function toggleFamilyStudent(id, on){ if(on) famSelectedStudentIds.add(id); else famSelectedStudentIds.delete(id); }
+async function saveFamily(){
+  const familyId = $('famEditId').value || '';
+  const familyName = $('famName').value.trim();
+  if(!familyName){ toast('Enter a family name','warning'); return; }
+  if(!CAN_USE_APPS_SCRIPT()){ toast('Apps Script URL not configured','error'); return; }
+  const studentIds = [...famSelectedStudentIds];
+  const removedIds = famOriginalStudentIds.filter(id=>!famSelectedStudentIds.has(id));
+  try{
+    const res = await scriptCall('saveFamily', { payload: JSON.stringify({ familyId, familyName, notes:$('famNotes').value.trim(), studentIds }) });
+    if(!res.ok){ toast(res.error||'Could not save family','error'); return; }
+    // Persist each member's familyId server-side too (the students sheet),
+    // so it survives rebuildStudentsFromCases() on the next sync — see
+    // applyStudentMeta(). Removed members get their familyId cleared.
+    for(const sid of studentIds){
+      await scriptCall('saveStudentMeta', { studentId:sid, familyId:res.familyId, notes:(STUDENT_META[sid]&&STUDENT_META[sid].notes)||'' }).catch(()=>{});
+    }
+    for(const sid of removedIds){
+      await scriptCall('saveStudentMeta', { studentId:sid, familyId:'', notes:(STUDENT_META[sid]&&STUDENT_META[sid].notes)||'' }).catch(()=>{});
+    }
+    closeModal('familyModal');
+    logAudit('Family saved', familyName); persist();
+    await loadFamilies(); await loadStudentMeta();
+    renderFamilies();
+    toast('Family saved');
+  }catch(e){ toast('Could not save family — check your connection','error'); }
+}
+async function deleteFamily(familyId){
+  const f = FAMILIES.find(x=>x.familyId===familyId); if(!f) return;
+  if(!confirm(`Delete the "${f.familyName}" family grouping?\nStudents themselves are not affected — only the grouping.`)) return;
+  try{
+    const res = await scriptCall('deleteFamily', { familyId });
+    if(!res.ok){ toast(res.error||'Could not delete family','error'); return; }
+    logAudit('Family deleted', f.familyName); persist();
+    await loadFamilies();
+    renderFamilies();
+    toast('Family deleted');
+  }catch(e){ toast('Could not delete family','error'); }
+}
+
 async function loadAppUsers(){
   if(!IS_ADMIN()) return;
   try{
-    let data;
-    if(USE_NODE_API()){
-      const res=await fetch(apiUrl('/api/admin/users'),{headers:authHeader()});
-      data=await res.json();
-    } else if(CAN_USE_APPS_SCRIPT()){
-      data = await scriptGet('listUsers', { adminCode: ME.code });
-    } else {
-      return;
-    }
+    if(!CAN_USE_APPS_SCRIPT()) return;
+    const data = await scriptCall('listUsers', {});
     if(data.ok) APP_USERS = data.users.map(u => `${u.firstName} ${u.lastName}`.trim()).filter(Boolean);
   }catch(e){}
 }
@@ -3779,15 +4721,8 @@ async function renderUsers(){
   const el=$('usersList'); if(!el) return;
   el.innerHTML=`<div class="py-10 text-center text-slate-400 text-sm font-medium"><i data-lucide="loader-circle" class="w-5 h-5 animate-spin mx-auto mb-2"></i>Loading…</div>`; icons();
   try{
-    let data;
-    if(USE_NODE_API()){
-      const res=await fetch(apiUrl('/api/admin/users'),{headers:authHeader()});
-      data=await res.json();
-    } else if(CAN_USE_APPS_SCRIPT()){
-      data = await scriptGet('listUsers', { adminCode: ME.code });
-    } else {
-      throw new Error('No backend configured');
-    }
+    if(!CAN_USE_APPS_SCRIPT()) throw new Error('Apps Script URL not configured');
+    const data = await scriptCall('listUsers', {});
     if(!data.ok){ el.innerHTML=emptyState('alert-circle','Could not load users',data.error||''); return; }
     const users=data.users;
     APP_USERS = users.map(u => `${u.firstName} ${u.lastName}`.trim()).filter(Boolean);
@@ -3817,58 +4752,13 @@ async function renderUsers(){
       </div>`;
     }).join('');
   }catch(e){
-    // Server not available — fall back to local users stored in localStorage
-    const local = getLocalUsers();
-    if(!local.length){ el.innerHTML=emptyState('wifi-off','Server not available','No local users found. Start the server with  node server.js  to manage users.'); }
-    else {
-      const users = local;
-      const roleColor={'Lead DSL':'crit','Head of Primary':'crit','Head of Secondary':'crit','Principal':'crit','Deputy DSL':'high','SENDCO':'med','Pastoral Lead':'med','Teacher':'low'};
-      el.innerHTML=users.map(u=>{
-        const full=`${esc(u.firstName)} ${esc(u.lastName)}`;
-        const rc=roleColor[u.role]||'low';
-        const ll=u.lastLogin?fmtDate(u.lastLogin):'Never';
-        return `<div class="flex items-center gap-3 px-5 py-3.5 hover:bg-dim/40 transition-colors ${u.active?'':'opacity-55'}">
-          <div class="w-10 h-10 rounded-full bg-brandSoft text-onBrandSoft grid place-items-center font-bold text-xs shrink-0">${initials(u.firstName+' '+u.lastName)}</div>
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-2 flex-wrap">
-              <span class="font-bold text-sm text-ink">${full}</span>
-              <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-${rc}Soft text-${rc}">${esc(u.role)}</span>
-              ${u.active?'':`<span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-dim text-slate-400">Revoked</span>`}
-            </div>
-            <div class="text-[11px] text-slate-400 font-medium">Last login: ${ll}</div>
-          </div>
-          <div class="hidden sm:block text-[11px] text-slate-400 font-medium w-[100px] shrink-0">${ll}</div>
-          <div class="flex items-center gap-1 shrink-0">
-            <button onclick="openEditUser('${u.id}','${esc(u.firstName)}','${esc(u.lastName)}','${esc(u.role)}')" title="Edit" class="w-9 h-9 rounded-full hover:bg-dim text-slate-400 hover:text-brand grid place-items-center transition-colors"><i data-lucide="pencil" class="w-4 h-4"></i></button>
-            <button onclick="adminRegenCode('${u.id}','${full}')" title="New access code" class="w-9 h-9 rounded-full hover:bg-dim text-slate-400 hover:text-brand grid place-items-center transition-colors"><i data-lucide="key-round" class="w-4 h-4"></i></button>
-            <button onclick="adminToggle('${u.id}','${full}',${u.active})" title="${u.active?'Revoke access':'Restore access'}" class="w-9 h-9 rounded-full hover:bg-${u.active?'crit':'ok'}Soft text-slate-400 hover:text-${u.active?'crit':'ok'} grid place-items-center transition-colors"><i data-lucide="${u.active?'shield-off':'shield-check'}" class="w-4 h-4"></i></button>
-            <button onclick="adminDelete('${u.id}','${full}')" title="Delete permanently" class="w-9 h-9 rounded-full hover:bg-critSoft text-slate-400 hover:text-crit grid place-items-center transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-          </div>
-        </div>`;
-      }).join('');
-    }
+    // No client-side fallback store for users — the old "local users in
+    // localStorage" fallback stored access codes in plaintext client-side,
+    // which is exactly what Work Item 2 removes. If the backend is
+    // unreachable, user management is simply unavailable until it's back.
+    el.innerHTML=emptyState('wifi-off','Server not reachable','Check the Apps Script URL in Settings and your connection, then try again.');
   }
   icons();
-}
-
-// ---------- Local users fallback (when server not available) ----------
-function getLocalUsers(){ try{ return JSON.parse(LS.get('ics_users')||'[]'); }catch(e){ return []; } }
-function saveLocalUsers(u){ try{ LS.set('ics_users', JSON.stringify(u||[])); }catch(e){} }
-function genAccessCode(len=14){
-  const upper='ABCDEFGHJKLMNPQRSTUVWXYZ';
-  const lower='abcdefghijkmnopqrstuvwxyz';
-  const digits='23456789';
-  const symbols='!@#$%^&*_-+=';
-  const all=upper+lower+digits+symbols;
-  const size=Math.max(12, len||14);
-  const pick=(chars)=> chars[Math.floor(Math.random()*chars.length)];
-  const out=[pick(upper), pick(lower), pick(digits), pick(symbols)];
-  for(let i=out.length;i<size;i++) out.push(pick(all));
-  for(let i=out.length-1;i>0;i--){
-    const j=Math.floor(Math.random()*(i+1));
-    const t=out[i]; out[i]=out[j]; out[j]=t;
-  }
-  return out.join('');
 }
 
 function openCreateUser(){
@@ -3888,18 +4778,8 @@ async function saveUser(){
   if(!first||!last){ toast('Enter first and last name','warning'); return; }
   const isEdit=!!id;
   try{
-    let data;
-    if(USE_NODE_API()){
-      const res=await fetch(apiUrl(isEdit?`/api/admin/users/${id}`:'/api/admin/users'),{
-        method:isEdit?'PUT':'POST', headers:authHeader(),
-        body:JSON.stringify({firstName:first,lastName:last,role})
-      });
-      data=await res.json();
-    } else if(CAN_USE_APPS_SCRIPT()){
-      data = await scriptGet('saveUser', { adminCode:ME.code, id:id||'', firstName:first, lastName:last, role });
-    } else {
-      throw new Error('No backend configured');
-    }
+    if(!CAN_USE_APPS_SCRIPT()) throw new Error('Apps Script URL not configured');
+    const data = await scriptCall('saveUser', { id:id||'', firstName:first, lastName:last, role });
     if(!data.ok){ toast(data.error||'Failed','error'); return; }
     closeModal('userModal');
     if(!isEdit){ showCodeReveal(`${data.user.firstName} ${data.user.lastName}`, data.user.code, 'Access code created'); }
@@ -3912,15 +4792,8 @@ async function saveUser(){
 async function adminRegenCode(id, name){
   if(!confirm(`Generate a new access code for ${name}?\nTheir current code will stop working immediately.`)) return;
   try{
-    let data;
-    if(USE_NODE_API()){
-      const res=await fetch(apiUrl(`/api/admin/users/${id}/regenerate`),{method:'POST',headers:authHeader()});
-      data=await res.json();
-    } else if(CAN_USE_APPS_SCRIPT()){
-      data = await scriptGet('regenUserCode', { adminCode:ME.code, id });
-    } else {
-      throw new Error('No backend configured');
-    }
+    if(!CAN_USE_APPS_SCRIPT()) throw new Error('Apps Script URL not configured');
+    const data = await scriptCall('regenUserCode', { id });
     if(!data.ok){ toast(data.error||'Failed','error'); return; }
     showCodeReveal(name, data.code, 'New access code');
     await renderUsers();
@@ -3930,15 +4803,8 @@ async function adminRegenCode(id, name){
 async function adminToggle(id, name, active){
   if(!confirm(`${active?'Revoke':'Restore'} access for ${name}?`)) return;
   try{
-    let data;
-    if(USE_NODE_API()){
-      const res=await fetch(apiUrl(`/api/admin/users/${id}/toggle`),{method:'POST',headers:authHeader()});
-      data=await res.json();
-    } else if(CAN_USE_APPS_SCRIPT()){
-      data = await scriptGet('toggleUser', { adminCode:ME.code, id });
-    } else {
-      throw new Error('No backend configured');
-    }
+    if(!CAN_USE_APPS_SCRIPT()) throw new Error('Apps Script URL not configured');
+    const data = await scriptCall('toggleUser', { id });
     if(!data.ok){ toast(data.error||'Failed','error'); return; }
     toast(data.active?`Access restored — ${name}`:`Access revoked — ${name}`, data.active?'success':'warning');
     await renderUsers();
@@ -3948,15 +4814,8 @@ async function adminToggle(id, name, active){
 async function adminDelete(id, name){
   if(!confirm(`Permanently delete ${name}?\nThis cannot be undone.`)) return;
   try{
-    let data;
-    if(USE_NODE_API()){
-      const res=await fetch(apiUrl(`/api/admin/users/${id}`),{method:'DELETE',headers:authHeader()});
-      data=await res.json();
-    } else if(CAN_USE_APPS_SCRIPT()){
-      data = await scriptGet('deleteUser', { adminCode:ME.code, id });
-    } else {
-      throw new Error('No backend configured');
-    }
+    if(!CAN_USE_APPS_SCRIPT()) throw new Error('Apps Script URL not configured');
+    const data = await scriptCall('deleteUser', { id });
     if(!data.ok){ toast(data.error||'Failed','error'); return; }
     toast(`${name} deleted`);
     await renderUsers();
@@ -3982,15 +4841,22 @@ function boot(){
   setSource(SOURCE);
   document.querySelectorAll('[data-nav]').forEach(b=> b.addEventListener('click',()=>go(b.dataset.nav)));
   document.querySelectorAll('[data-mnav]').forEach(b=> b.addEventListener('click',()=>go(b.dataset.mnav)));
+  initIdleWatchers();
   icons();
   if(checkSavedAuth()){
     paintUser();
     applyRoleLayout();
     hideAuthOverlay();
+    // Warm start from the last locally-cached copy so the app is instantly
+    // interactive, then only pay for a full re-fetch if the server's data
+    // actually changed since that copy was cached (see checkForUpdatesAndSync).
+    loadPersisted();
     renderAll();
     go('dashboard');
-    if(SOURCE==='live'&&SCRIPT_URL) syncData();
+    if(SOURCE==='live'&&SCRIPT_URL) checkForUpdatesAndSync();
     loadAppUsers();
+    loadFamilies();
+    resetIdleTimer();
   }
   // Auth overlay stays visible until successful login
 }

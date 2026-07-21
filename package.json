@@ -1,15 +1,13 @@
 {
-  "name": "ican-safeguarding",
-  "version": "1.0.0",
-  "description": "I CAN School Safeguarding Platform",
-  "main": "server.js",
+  "name": "safeguarding-dev-checks",
+  "private": true,
+  "description": "Dev-only validation harness (syntax check + jsdom smoke test). Not a runtime dependency of the app — the app itself is a static index.html talking to Apps Script.",
   "scripts": {
-    "start": "node server.js"
+    "check": "node scripts/check-syntax.js",
+    "smoke": "node scripts/smoke-test.js",
+    "test": "npm run check && npm run smoke"
   },
-  "dependencies": {
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "nodemailer": "^6.9.13",
-    "bcryptjs": "^2.4.3"
+  "devDependencies": {
+    "jsdom": "^25.0.1"
   }
 }
