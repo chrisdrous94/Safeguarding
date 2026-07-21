@@ -568,7 +568,6 @@ tailwind.config = {
         <option value="action">Action</option>
         <option value="bodymap">Body map</option>
         <option value="send">SEND update</option>
-        <option value="meeting">Meeting minutes</option>
       </select>
       <label class="text-[11px] font-bold text-slate-400">From <input id="chrFrom" type="date" onchange="onChronologyFilterChange()" class="h-10 ml-1 px-2 rounded-xl bg-card border border-line text-xs font-semibold"></label>
       <label class="text-[11px] font-bold text-slate-400">To <input id="chrTo" type="date" onchange="onChronologyFilterChange()" class="h-10 ml-1 px-2 rounded-xl bg-card border border-line text-xs font-semibold"></label>
@@ -722,14 +721,18 @@ tailwind.config = {
             <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Chronology</h4>
             <div id="caseTimeline" class="relative timeline pl-8 space-y-4"></div>
             <div class="mt-4 bg-card rounded-2xl border border-line p-3">
-              <textarea id="caseNote" rows="2" placeholder="Add a note, meeting minutes, or other update to the chronology…" class="w-full px-3 py-2 rounded-xl bg-dim border border-transparent text-sm font-medium resize-none"></textarea>
-              <div class="flex items-center justify-between mt-2 gap-2">
-                <select id="caseNoteType" class="h-9 px-2.5 rounded-full bg-dim border border-transparent text-xs font-bold text-slate-600">
-                  <option value="note">Note</option>
-                  <option value="meeting">Meeting minutes</option>
-                </select>
-                <button onclick="addCaseNote()" class="h-9 px-4 rounded-full bg-brand hover:bg-brandDark text-white text-xs font-bold">Add to chronology</button>
-              </div>
+              <textarea id="caseNote" rows="2" placeholder="Add a note or update to the chronology…" class="w-full px-3 py-2 rounded-xl bg-dim border border-transparent text-sm font-medium resize-none"></textarea>
+              <div class="flex justify-end mt-2"><button onclick="addCaseNote()" class="h-9 px-4 rounded-full bg-brand hover:bg-brandDark text-white text-xs font-bold">Add note</button></div>
+            </div>
+          </div>
+          <div>
+            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Meeting minutes</h4>
+            <p class="text-[11px] text-slate-400 font-medium mb-2">A separate record for this case — kept apart from the chronology above.</p>
+            <div id="caseMeetings" class="space-y-2"></div>
+            <div class="mt-3 bg-card rounded-2xl border border-line p-3 space-y-2">
+              <input id="caseMeetingTitle" placeholder="Meeting title (e.g. Annual review, TAC meeting)…" class="w-full h-10 px-3 rounded-xl bg-dim border border-transparent text-sm font-medium">
+              <textarea id="caseMeetingMinutes" rows="3" placeholder="Minutes / notes from the meeting…" class="w-full px-3 py-2 rounded-xl bg-dim border border-transparent text-sm font-medium resize-none"></textarea>
+              <div class="flex justify-end"><button onclick="addCaseMeeting()" class="h-9 px-4 rounded-full bg-brand hover:bg-brandDark text-white text-xs font-bold">Log meeting minutes</button></div>
             </div>
           </div>
         </div>
@@ -1575,7 +1578,8 @@ async function syncData(){
         bodyMap: Array.isArray(p.bodyMap) ? p.bodyMap : (Array.isArray(r.bodyMap) ? r.bodyMap : []),
         timeline: Array.isArray(p.timeline) ? p.timeline : (Array.isArray(r.timeline) ? r.timeline : []),
         actions: Array.isArray(p.actions) ? p.actions : (Array.isArray(r.actions) ? r.actions : []),
-        linkedCaseIds: Array.isArray(p.linkedCaseIds) ? p.linkedCaseIds : (Array.isArray(r.linkedCaseIds) ? r.linkedCaseIds : [])
+        linkedCaseIds: Array.isArray(p.linkedCaseIds) ? p.linkedCaseIds : (Array.isArray(r.linkedCaseIds) ? r.linkedCaseIds : []),
+        meetings: Array.isArray(p.meetings) ? p.meetings : (Array.isArray(r.meetings) ? r.meetings : [])
       };
     });
     rebuildStudentsFromCases();
@@ -2030,7 +2034,7 @@ async function submitConcern(){
     status:'New', description:$('rDesc').value.trim()||'No description provided.',
     location:$('rLocation').value.trim()||'—', reporter:reporterName,
     assignee:'', date:now,
-    agencies:[], actions:[], bodyMap:reportBodyMap.filter(m=>true), linkedCaseIds:[],
+    agencies:[], actions:[], bodyMap:reportBodyMap.filter(m=>true), linkedCaseIds:[], meetings:[],
     timeline:[{time:now,author:reporterName,type:'log',text:'Concern logged.'}] };
   DB.cases.unshift(c);
   logAudit('Concern logged', `${cat} · ${s.name}`, c.reporter);
@@ -2128,7 +2132,7 @@ function openCase(id){
   // meta
   $('caseMeta').innerHTML = [['Logged',fmtDate(c.date)+' '+fmtTime(c.date)],['Reported by',c.reporter],['Class',c.studentClass||'—'],['Department',c.department||'—'],['Location',c.location||'—'],['Reference',c.id.slice(0,8).toUpperCase()]]
     .map(([k2,v])=>`<div class="flex justify-between gap-2"><span class="text-slate-400 font-medium">${k2}</span><span class="text-ink font-semibold text-right">${esc(v)}</span></div>`).join('');
-  renderCaseActions(c); renderCaseTimeline(c); renderCaseLinked(c);
+  renderCaseActions(c); renderCaseTimeline(c); renderCaseLinked(c); renderCaseMeetings(c);
   renderCaseSendStatus(c);
   openModal('caseModal'); icons();
 }
@@ -2229,7 +2233,7 @@ function renderCaseActions(c){
 }
 function renderCaseTimeline(c){
   const tl=[...(c.timeline||[])].sort((a,b)=>new Date(b.time)-new Date(a.time));
-  const ico={log:'flag',note:'message-square',action:'list-checks',status:'refresh-cw',agency:'git-merge',send:'clipboard-list',meeting:'users'};
+  const ico={log:'flag',note:'message-square',action:'list-checks',status:'refresh-cw',agency:'git-merge',send:'clipboard-list'};
   $('caseTimeline').innerHTML = tl.map(e=>`<div class="relative">
     <span class="absolute -left-[26px] top-0.5 w-7 h-7 -ml-2 rounded-full bg-card border border-line grid place-items-center"><i data-lucide="${ico[e.type]||'dot'}" class="w-3.5 h-3.5 text-brand"></i></span>
     <div class="text-[10px] font-bold uppercase tracking-wide text-slate-400">${fmtShort(e.time)} ${fmtTime(e.time)} · ${esc(e.author)}</div>
@@ -2333,12 +2337,47 @@ function toggleAgency(key){ const c=DB.cases.find(x=>x.id===activeCaseId); c.age
   else { c.agencies.push(key); c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'agency',text:`Referred to ${AGENCIES[key].label}.`}); logAudit('Agency referral',`${c.studentName} · ${AGENCIES[key].label}`); }
   if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c}); persist(); openCase(activeCaseId); renderAll(); }
 function addCaseNote(){ const t=$('caseNote').value.trim(); if(!t) return; const c=DB.cases.find(x=>x.id===activeCaseId);
-  const kind = $('caseNoteType')?.value==='meeting' ? 'meeting' : 'note';
-  const text = kind==='meeting' ? `Meeting minutes: ${t}` : t;
-  c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:kind,text}); $('caseNote').value='';
-  logAudit(kind==='meeting'?'Meeting minutes logged':'Note added',c.studentName);
+  c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'note',text:t}); $('caseNote').value='';
+  logAudit('Note added',c.studentName); if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c}); persist(); renderCaseTimeline(c); renderAll(); toast('Note added'); }
+
+// ---------- MEETING MINUTES — a separate log per case, deliberately kept
+// out of the chronology/timeline (and so out of the per-student Full
+// Chronology aggregation too) since the user asked for these to be
+// distinct records, not chronology entries. ----------
+function renderCaseMeetings(c){
+  const el = $('caseMeetings'); if(!el) return;
+  const meetings = c.meetings || [];
+  el.innerHTML = meetings.length ? meetings.map(m=>`
+    <div class="bg-card rounded-2xl border border-line p-3">
+      <div class="flex items-center justify-between gap-2 mb-1">
+        <span class="text-sm font-bold text-ink">${esc(m.title||'Meeting')}</span>
+        <button onclick="deleteCaseMeeting('${m.id}')" title="Delete" class="w-7 h-7 shrink-0 rounded-full hover:bg-critSoft text-slate-400 hover:text-crit grid place-items-center"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+      </div>
+      <div class="text-[11px] font-semibold text-slate-400 mb-1.5">${fmtDate(m.time)} ${fmtTime(m.time)} · ${esc(m.author)}</div>
+      <p class="text-xs text-slate-600 font-medium whitespace-pre-wrap">${esc(m.text)}</p>
+    </div>`).join('') : '<p class="text-xs text-slate-400 font-medium italic">No meeting minutes logged yet.</p>';
+  icons();
+}
+function addCaseMeeting(){
+  const title = $('caseMeetingTitle').value.trim();
+  const text = $('caseMeetingMinutes').value.trim();
+  if(!text){ toast('Add the meeting minutes text','warning'); return; }
+  const c = DB.cases.find(x=>x.id===activeCaseId); if(!c) return;
+  c.meetings = c.meetings || [];
+  c.meetings.unshift({ id:uid('mt_'), time:new Date().toISOString(), author:ME.name, title:title||'Meeting', text });
+  $('caseMeetingTitle').value=''; $('caseMeetingMinutes').value='';
+  logAudit('Meeting minutes logged', c.studentName);
   if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
-  persist(); renderCaseTimeline(c); renderAll(); toast(kind==='meeting'?'Meeting minutes logged':'Note added'); }
+  persist(); renderCaseMeetings(c); toast('Meeting minutes logged');
+}
+function deleteCaseMeeting(id){
+  const c = DB.cases.find(x=>x.id===activeCaseId); if(!c) return;
+  if(!confirm('Delete these meeting minutes? This cannot be undone.')) return;
+  c.meetings = (c.meetings||[]).filter(m=>m.id!==id);
+  logAudit('Meeting minutes deleted', c.studentName);
+  if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
+  persist(); renderCaseMeetings(c); toast('Meeting minutes deleted');
+}
 function addActionPrompt(){ $('newActionText').value=''; $('newActionDue').value=''; populateSelects(); $('newActionOwner').value=ME.name; openModal('actionModal'); }
 function saveAction(){ const t=$('newActionText').value.trim(); if(!t){ toast('Describe the action','warning'); return; }
   const c=DB.cases.find(x=>x.id===activeCaseId);
@@ -2402,7 +2441,7 @@ function reportForCurrentStudent(){ const s=studentById(activeStudentId); closeM
 // child's full safeguarding picture, not just the cases they personally logged.
 // Known limitation: actions and body-map marks have no per-entry timestamp in
 // the current data model, so they're anchored to their case's logged date.
-const CHRONOLOGY_TYPE_LABELS = { concern:'Concern', note:'Note', status:'Status change', agency:'Agency referral', assignee:'Reassigned', action:'Action', bodymap:'Body map', send:'SEND update', meeting:'Meeting minutes' };
+const CHRONOLOGY_TYPE_LABELS = { concern:'Concern', note:'Note', status:'Status change', agency:'Agency referral', assignee:'Reassigned', action:'Action', bodymap:'Body map', send:'SEND update' };
 function chronologyTypeLabel(t){ return CHRONOLOGY_TYPE_LABELS[t] || 'Update'; }
 function buildChronologyEvents(studentId){
   const ev = [];
@@ -2451,7 +2490,7 @@ function renderChronology(){
   $('chrStudentMeta').textContent = `${s.year||''}${s.form?' · '+s.form:''} · ${casesForStudent(s.id).length} concern${casesForStudent(s.id).length!==1?'s':''} on record`;
   const ev = filteredChronologyEvents();
   $('chrCount').textContent = `${ev.length} entr${ev.length!==1?'ies':'y'}`;
-  const icoMap = { concern:'shield-plus', note:'message-square', status:'refresh-cw', agency:'git-merge', assignee:'user-check', action:'list-checks', bodymap:'scan-line', send:'clipboard-list', meeting:'users' };
+  const icoMap = { concern:'shield-plus', note:'message-square', status:'refresh-cw', agency:'git-merge', assignee:'user-check', action:'list-checks', bodymap:'scan-line', send:'clipboard-list' };
   $('chrList').innerHTML = ev.length ? ev.map(e=>{
     const sr = safeRisk(e.risk);
     return `<div class="relative"><span class="absolute -left-[26px] top-0.5 w-7 h-7 -ml-2 rounded-full bg-${RISK[sr].soft} grid place-items-center"><i data-lucide="${icoMap[e.type]||'dot'}" class="w-3.5 h-3.5 text-${RISK[sr].color}"></i></span>
@@ -4128,7 +4167,7 @@ function saveSendReport(sessionUser, period, month, payloadJson){
 function caseHeaders(){
   return ['id','timestamp','reporter','studentId','studentName','year','category','subcategory','risk','status',
     'description','location','assignee','department','strategies','agencies','bodyMap','timeline','actions',
-    'strategyImpactPositive','strategyImpactNone','sendcoReason','strategyDuration','linkedCaseIds','studentClass'];
+    'strategyImpactPositive','strategyImpactNone','sendcoReason','strategyDuration','linkedCaseIds','studentClass','meetings'];
 }
 function ensureCasesSheet(){ return getOrCreateSheet(SHEET_CASES, caseHeaders()); }
 function parseJsonCell(value, fallback){
@@ -4162,7 +4201,7 @@ function getCasesFresh(){
         strategies:parseJsonCell(row[14],[]), agencies:parseJsonCell(row[15],[]), bodyMap:parseJsonCell(row[16],[]),
         timeline:parseJsonCell(row[17],[]), actions:parseJsonCell(row[18],[]), strategyImpactPositive:row[19]||'',
         strategyImpactNone:row[20]||'', sendcoReason:row[21]||'', strategyDuration:row[22]||'',
-        linkedCaseIds: parseJsonCell(row[23], []), studentClass: row[24]||''
+        linkedCaseIds: parseJsonCell(row[23], []), studentClass: row[24]||'', meetings: parseJsonCell(row[25], [])
       };
       byId[c.id] = {
         id:c.id, rowId:i+1, timestamp:c.date, reporterName:c.reporter, studentId:c.studentId, studentName:c.studentName,
@@ -4171,14 +4210,14 @@ function getCasesFresh(){
         agencies: Array.isArray(c.agencies) ? c.agencies.join(',') : String(c.agencies||''),
         bodyMap:c.bodyMap, timeline:c.timeline, actions:c.actions, strategyImpactPositive:c.strategyImpactPositive,
         strategyImpactNone:c.strategyImpactNone, sendcoReason:c.sendcoReason, strategyDuration:c.strategyDuration,
-        linkedCaseIds:c.linkedCaseIds, studentClass:c.studentClass, payload:c
+        linkedCaseIds:c.linkedCaseIds, studentClass:c.studentClass, meetings:c.meetings, payload:c
       };
       continue;
     }
     const legacyId = row[0] || ('legacy_'+(i+1));
     byId[legacyId] = { id:legacyId, rowId:i+1, timestamp:row[0], reporterName:row[1], studentId:'', studentName:row[5],
       grade:row[6], category:row[11], severity:row[12]||'', description:row[12], location:'', status:row[20]||'New',
-      assignee:row[21]||'', agencies:row[22]||'', linkedCaseIds:[], studentClass:'' };
+      assignee:row[21]||'', agencies:row[22]||'', linkedCaseIds:[], studentClass:'', meetings:[] };
   }
   return { ok:true, status:'success', data: Object.keys(byId).map(function(k){ return byId[k]; }) };
 }
@@ -4203,7 +4242,8 @@ function normalizeCasePayload(p){
     actions: Array.isArray(p.actions) ? p.actions : [], strategyImpactPositive:p.strategyImpactPositive||'',
     strategyImpactNone:p.strategyImpactNone||'', sendcoReason:p.sendcoReason||'', strategyDuration:p.strategyDuration||'',
     linkedCaseIds: Array.isArray(p.linkedCaseIds) ? p.linkedCaseIds.filter(Boolean) : [],
-    studentClass: p.studentClass||''
+    studentClass: p.studentClass||'',
+    meetings: Array.isArray(p.meetings) ? p.meetings : []
   };
 }
 function upsertCaseRecord(payload){
@@ -4215,7 +4255,7 @@ function upsertCaseRecord(payload){
     const row = [c.id,c.date,c.reporter,c.studentId,c.studentName,c.year,c.category,c.subcategory,c.risk,c.status,
       c.description,c.location,c.assignee,c.department,JSON.stringify(c.strategies),JSON.stringify(c.agencies),
       JSON.stringify(c.bodyMap),JSON.stringify(c.timeline),JSON.stringify(c.actions),c.strategyImpactPositive,
-      c.strategyImpactNone,c.sendcoReason,c.strategyDuration,JSON.stringify(c.linkedCaseIds),c.studentClass];
+      c.strategyImpactNone,c.sendcoReason,c.strategyDuration,JSON.stringify(c.linkedCaseIds),c.studentClass,JSON.stringify(c.meetings)];
     let rowId;
     if(idx >= 0){ rowId = Number(cases[idx].rowId || (idx+2)); sh.getRange(rowId,1,1,row.length).setValues([row]); }
     else { sh.appendRow(row); rowId = sh.getLastRow(); }
@@ -4254,7 +4294,7 @@ function updateCaseStatus(rowId, caseId, status){
     subcategory:'', risk:c.severity, status:status, description:c.description, location:'', assignee:c.assignee,
     department:c.department||'', studentClass:c.studentClass||'',
     agencies:(c.agencies||'').split(',').filter(Boolean), bodyMap:c.bodyMap||[], timeline:c.timeline||[], actions:c.actions||[],
-    linkedCaseIds:c.linkedCaseIds||[]
+    linkedCaseIds:c.linkedCaseIds||[], meetings:c.meetings||[]
   });
   payload.status = status;
   return upsertCaseRecord(payload);

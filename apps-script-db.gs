@@ -685,7 +685,7 @@ function saveSendReport(sessionUser, period, month, payloadJson){
 function caseHeaders(){
   return ['id','timestamp','reporter','studentId','studentName','year','category','subcategory','risk','status',
     'description','location','assignee','department','strategies','agencies','bodyMap','timeline','actions',
-    'strategyImpactPositive','strategyImpactNone','sendcoReason','strategyDuration','linkedCaseIds','studentClass'];
+    'strategyImpactPositive','strategyImpactNone','sendcoReason','strategyDuration','linkedCaseIds','studentClass','meetings'];
 }
 function ensureCasesSheet(){ return getOrCreateSheet(SHEET_CASES, caseHeaders()); }
 function parseJsonCell(value, fallback){
@@ -719,7 +719,7 @@ function getCasesFresh(){
         strategies:parseJsonCell(row[14],[]), agencies:parseJsonCell(row[15],[]), bodyMap:parseJsonCell(row[16],[]),
         timeline:parseJsonCell(row[17],[]), actions:parseJsonCell(row[18],[]), strategyImpactPositive:row[19]||'',
         strategyImpactNone:row[20]||'', sendcoReason:row[21]||'', strategyDuration:row[22]||'',
-        linkedCaseIds: parseJsonCell(row[23], []), studentClass: row[24]||''
+        linkedCaseIds: parseJsonCell(row[23], []), studentClass: row[24]||'', meetings: parseJsonCell(row[25], [])
       };
       byId[c.id] = {
         id:c.id, rowId:i+1, timestamp:c.date, reporterName:c.reporter, studentId:c.studentId, studentName:c.studentName,
@@ -728,14 +728,14 @@ function getCasesFresh(){
         agencies: Array.isArray(c.agencies) ? c.agencies.join(',') : String(c.agencies||''),
         bodyMap:c.bodyMap, timeline:c.timeline, actions:c.actions, strategyImpactPositive:c.strategyImpactPositive,
         strategyImpactNone:c.strategyImpactNone, sendcoReason:c.sendcoReason, strategyDuration:c.strategyDuration,
-        linkedCaseIds:c.linkedCaseIds, studentClass:c.studentClass, payload:c
+        linkedCaseIds:c.linkedCaseIds, studentClass:c.studentClass, meetings:c.meetings, payload:c
       };
       continue;
     }
     const legacyId = row[0] || ('legacy_'+(i+1));
     byId[legacyId] = { id:legacyId, rowId:i+1, timestamp:row[0], reporterName:row[1], studentId:'', studentName:row[5],
       grade:row[6], category:row[11], severity:row[12]||'', description:row[12], location:'', status:row[20]||'New',
-      assignee:row[21]||'', agencies:row[22]||'', linkedCaseIds:[], studentClass:'' };
+      assignee:row[21]||'', agencies:row[22]||'', linkedCaseIds:[], studentClass:'', meetings:[] };
   }
   return { ok:true, status:'success', data: Object.keys(byId).map(function(k){ return byId[k]; }) };
 }
@@ -760,7 +760,8 @@ function normalizeCasePayload(p){
     actions: Array.isArray(p.actions) ? p.actions : [], strategyImpactPositive:p.strategyImpactPositive||'',
     strategyImpactNone:p.strategyImpactNone||'', sendcoReason:p.sendcoReason||'', strategyDuration:p.strategyDuration||'',
     linkedCaseIds: Array.isArray(p.linkedCaseIds) ? p.linkedCaseIds.filter(Boolean) : [],
-    studentClass: p.studentClass||''
+    studentClass: p.studentClass||'',
+    meetings: Array.isArray(p.meetings) ? p.meetings : []
   };
 }
 function upsertCaseRecord(payload){
@@ -772,7 +773,7 @@ function upsertCaseRecord(payload){
     const row = [c.id,c.date,c.reporter,c.studentId,c.studentName,c.year,c.category,c.subcategory,c.risk,c.status,
       c.description,c.location,c.assignee,c.department,JSON.stringify(c.strategies),JSON.stringify(c.agencies),
       JSON.stringify(c.bodyMap),JSON.stringify(c.timeline),JSON.stringify(c.actions),c.strategyImpactPositive,
-      c.strategyImpactNone,c.sendcoReason,c.strategyDuration,JSON.stringify(c.linkedCaseIds),c.studentClass];
+      c.strategyImpactNone,c.sendcoReason,c.strategyDuration,JSON.stringify(c.linkedCaseIds),c.studentClass,JSON.stringify(c.meetings)];
     let rowId;
     if(idx >= 0){ rowId = Number(cases[idx].rowId || (idx+2)); sh.getRange(rowId,1,1,row.length).setValues([row]); }
     else { sh.appendRow(row); rowId = sh.getLastRow(); }
@@ -811,7 +812,7 @@ function updateCaseStatus(rowId, caseId, status){
     subcategory:'', risk:c.severity, status:status, description:c.description, location:'', assignee:c.assignee,
     department:c.department||'', studentClass:c.studentClass||'',
     agencies:(c.agencies||'').split(',').filter(Boolean), bodyMap:c.bodyMap||[], timeline:c.timeline||[], actions:c.actions||[],
-    linkedCaseIds:c.linkedCaseIds||[]
+    linkedCaseIds:c.linkedCaseIds||[], meetings:c.meetings||[]
   });
   payload.status = status;
   return upsertCaseRecord(payload);
