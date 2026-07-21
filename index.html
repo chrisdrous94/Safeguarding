@@ -1051,7 +1051,7 @@ tailwind.config = {
 </div>
 
 <!-- Toasts -->
-<div id="toasts" class="fixed z-[120] bottom-24 md:bottom-6 left-1/2 -translate-x-1/2 md:left-auto md:right-6 md:translate-x-0 flex flex-col gap-2 w-[92%] max-w-sm pointer-events-none"></div>
+<div id="toasts" class="fixed z-[250] bottom-24 md:bottom-6 left-1/2 -translate-x-1/2 md:left-auto md:right-6 md:translate-x-0 flex flex-col gap-2 w-[92%] max-w-sm pointer-events-none"></div>
 <script>
 /* ============================================================
    I CAN School · Safeguarding platform
@@ -1989,7 +1989,7 @@ function pickDuration(v){
   document.querySelectorAll('.rduration').forEach(b=>{ const on=b.dataset.duration===v;
     b.className=`rduration h-11 rounded-2xl border-2 text-[11px] sm:text-xs font-bold transition-colors ${on?'border-brand bg-brandSoft text-onBrandSoft':'border-line bg-card text-slate-700 hover:border-brand/40 hover:bg-dim/40'}`; });
 }
-function submitConcern(){
+async function submitConcern(){
   const name=$('rStudent').value.trim();
   const cat=$('rCategory').value;
   if(!name){ toast('Enter a student name','warning'); return; }
@@ -2016,15 +2016,34 @@ function submitConcern(){
     timeline:[{time:now,author:reporterName,type:'log',text:'Concern logged.'}] };
   DB.cases.unshift(c);
   logAudit('Concern logged', `${cat} · ${s.name}`, c.reporter);
+
   // A report filed from the sign-in screen (no account, no session token —
   // see openPublicReportFromAuth()) can't go through the normal syncCase
-  // action, which now requires an authenticated session. publicSyncCase is
-  // a narrow, rate-limited, session-free action that can only ever create a
-  // brand-new case, never read/update/delete anything.
-  if(SOURCE==='live'&&SCRIPT_URL){
-    if(PUBLIC_REPORT_MODE) postLive({action:'publicSyncCase',payload:c});
-    else postLive({action:'syncCase',payload:c});
+  // action, which now requires an authenticated session; publicSyncCase is
+  // a narrow, rate-limited, session-free action for exactly this case.
+  // Unlike the normal optimistic flow below, this one is awaited: a public
+  // reporter has no account to log back into and check whether it actually
+  // saved, so "submitted" has to mean it's confirmed on the server, not just
+  // queued locally.
+  if(PUBLIC_REPORT_MODE){
+    const btn = $('submitBtn'); const origHTML = btn?.innerHTML;
+    if(btn){ btn.disabled=true; btn.innerHTML='<i data-lucide="loader-circle" class="w-4 h-4 animate-spin"></i>Submitting…'; icons(); }
+    let result;
+    try{ result = await scriptCall('publicSyncCase', { payload: c }); }
+    catch(e){ result = { ok:false, error:'Could not reach the server — check your connection and try again.' }; }
+    if(btn){ btn.disabled=false; btn.innerHTML=origHTML; icons(); }
+    if(!result || !result.ok){
+      DB.cases.shift(); // undo the optimistic local add — it never actually reached the sheet
+      toast((result && result.error) || 'Could not submit — please try again.', 'error');
+      return; // leave the form open so nothing typed is lost
+    }
+    persist();
+    closeReportModal();
+    toast('Concern submitted to the DSL team');
+    return;
   }
+
+  if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
   persist(); closeReportModal(); renderAll();
   toast('Concern submitted to the DSL team');
   go('concerns');
