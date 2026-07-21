@@ -3447,7 +3447,14 @@ const CODE_MIN_LENGTH = 6;
 const CODE_MAX_LENGTH = 24;
 const NAME_MAX_LENGTH = 100;
 const NOTES_MAX_LENGTH = 5000;
-const PBKDF2_ITERATIONS = 12000;
+// Each iteration is a real Utilities.computeHmacSha256Signature call, and
+// that bridge crossing (not the crypto itself) dominates cost in Apps
+// Script — 12,000 of them made every single login noticeably slow. Lowered
+// for interactive login latency; the iteration count travels inside each
+// stored hash (see hashCodeStrong's "pbkdf2$<iter>$..." format), so this
+// only affects newly-created hashes — existing ones keep verifying with
+// whatever count they were created under.
+const PBKDF2_ITERATIONS = 2000;
 const SESSION_TTL_SECONDS = 1200; // 20 min sliding idle timeout
 const SESSION_MAX_AGE_MS = 8 * 3600000; // 8h absolute cap, matches prior client-side session length
 const LOGIN_MAX_ATTEMPTS = 5;
@@ -3731,12 +3738,24 @@ function loadUsers(){
     const r = vals[i];
     if(String(r.join('')).trim()==='') continue;
     users.push({
-      id: r[0], firstName: r[1], lastName: r[2], role: r[3] || 'Teacher', email: r[4] || '',
+      id: r[0], rowId: i+1, firstName: r[1], lastName: r[2], role: r[3] || 'Teacher', email: r[4] || '',
       codeHash: r[5] || '', active: String(r[6]).toLowerCase() !== 'false',
       createdAt: r[7] || '', updatedAt: r[8] || '', lastLogin: r[9] || ''
     });
   }
   return users;
+}
+function userRow(u){
+  return [u.id,u.firstName,u.lastName,u.role,u.email,u.codeHash,Boolean(u.active),u.createdAt,u.updatedAt,u.lastLogin];
+}
+// Targeted single-row write, used on the login hot path (see loginByCode) so
+// a routine lastLogin timestamp update doesn't clear+rewrite the whole
+// sheet — that used to happen on every single sign-in, holding the lock for
+// the full rewrite and queueing up concurrent logins behind it.
+function updateUserRow(u){
+  const sh = getOrCreateSheet(SHEET_USERS, userHeaders());
+  sh.getRange(u.rowId, 1, 1, userHeaders().length).setValues([userRow(u)]);
+  bumpDataVersion();
 }
 function saveUsers(users){
   const sh = getOrCreateSheet(SHEET_USERS, userHeaders());
@@ -3744,9 +3763,7 @@ function saveUsers(users){
   sh.clearContents();
   sh.getRange(1,1,1,headers.length).setValues([headers]);
   if(users && users.length){
-    const rows = users.map(function(u){
-      return [u.id,u.firstName,u.lastName,u.role,u.email,u.codeHash,Boolean(u.active),u.createdAt,u.updatedAt,u.lastLogin];
-    });
+    const rows = users.map(userRow);
     sh.getRange(2,1,rows.length,headers.length).setValues(rows);
   }
   bumpDataVersion();
@@ -3815,7 +3832,7 @@ function loginByCode(code){
   }
   users[idx].lastLogin = nowIso();
   users[idx].updatedAt = nowIso();
-  withLock(function(){ saveUsers(users); });
+  withLock(function(){ updateUserRow(users[idx]); });
 
   const pub = publicUser(users[idx]);
   return { ok:true, user:pub, token:createSession({ id:users[idx].id, role:users[idx].role, firstName:users[idx].firstName, lastName:users[idx].lastName }) };
