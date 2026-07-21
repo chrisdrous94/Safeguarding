@@ -567,6 +567,8 @@ tailwind.config = {
         <option value="assignee">Reassigned</option>
         <option value="action">Action</option>
         <option value="bodymap">Body map</option>
+        <option value="send">SEND update</option>
+        <option value="meeting">Meeting minutes</option>
       </select>
       <label class="text-[11px] font-bold text-slate-400">From <input id="chrFrom" type="date" onchange="onChronologyFilterChange()" class="h-10 ml-1 px-2 rounded-xl bg-card border border-line text-xs font-semibold"></label>
       <label class="text-[11px] font-bold text-slate-400">To <input id="chrTo" type="date" onchange="onChronologyFilterChange()" class="h-10 ml-1 px-2 rounded-xl bg-card border border-line text-xs font-semibold"></label>
@@ -720,8 +722,14 @@ tailwind.config = {
             <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Chronology</h4>
             <div id="caseTimeline" class="relative timeline pl-8 space-y-4"></div>
             <div class="mt-4 bg-card rounded-2xl border border-line p-3">
-              <textarea id="caseNote" rows="2" placeholder="Add a note or update to the chronology…" class="w-full px-3 py-2 rounded-xl bg-dim border border-transparent text-sm font-medium resize-none"></textarea>
-              <div class="flex justify-end mt-2"><button onclick="addCaseNote()" class="h-9 px-4 rounded-full bg-brand hover:bg-brandDark text-white text-xs font-bold">Add note</button></div>
+              <textarea id="caseNote" rows="2" placeholder="Add a note, meeting minutes, or other update to the chronology…" class="w-full px-3 py-2 rounded-xl bg-dim border border-transparent text-sm font-medium resize-none"></textarea>
+              <div class="flex items-center justify-between mt-2 gap-2">
+                <select id="caseNoteType" class="h-9 px-2.5 rounded-full bg-dim border border-transparent text-xs font-bold text-slate-600">
+                  <option value="note">Note</option>
+                  <option value="meeting">Meeting minutes</option>
+                </select>
+                <button onclick="addCaseNote()" class="h-9 px-4 rounded-full bg-brand hover:bg-brandDark text-white text-xs font-bold">Add to chronology</button>
+              </div>
             </div>
           </div>
         </div>
@@ -2160,6 +2168,9 @@ async function setCaseSendNeedArea(needArea){
   try{
     const res = await scriptCall('saveSendCase', { payload: JSON.stringify(payload) });
     if(!res.ok){ toast(res.error||'Could not update primary area of need','error'); return; }
+    c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'send',text:`Primary area of need set to ${sendNeedLabel(needArea)}.`});
+    if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
+    persist(); renderCaseTimeline(c);
     logAudit('SEND need area updated', `${sendNeedLabel(needArea)} · ${c.studentName}`, ME.name);
     sendCasesLoaded = false;
     toast('Primary area of need updated — whole-school report updated automatically');
@@ -2179,6 +2190,9 @@ async function setCaseSendStatus(status){
   try{
     const res = await scriptCall('saveSendCase', { payload: JSON.stringify(payload) });
     if(!res.ok){ toast(res.error||'Could not update SEND status','error'); return; }
+    c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'send',text:`SEND status set to ${sendStatusLabel(status)}.`});
+    if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
+    persist(); renderCaseTimeline(c);
     logAudit('SEND case logged', `${sendStatusLabel(status)} · ${c.studentName}`, ME.name);
     sendCasesLoaded = false;
     toast('SEND status updated — whole-school report updated automatically');
@@ -2194,6 +2208,9 @@ async function clearCaseSendStatus(){
   try{
     const res = await scriptCall('deleteSendCase', { id: existing.id });
     if(!res.ok){ toast(res.error||'Could not update SEND status','error'); return; }
+    c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'send',text:'Removed from SEND register.'});
+    if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
+    persist(); renderCaseTimeline(c);
     sendCasesLoaded = false;
     toast('Removed from SEND register');
     await renderCaseSendStatus(c);
@@ -2212,7 +2229,7 @@ function renderCaseActions(c){
 }
 function renderCaseTimeline(c){
   const tl=[...(c.timeline||[])].sort((a,b)=>new Date(b.time)-new Date(a.time));
-  const ico={log:'flag',note:'message-square',action:'list-checks',status:'refresh-cw',agency:'git-merge'};
+  const ico={log:'flag',note:'message-square',action:'list-checks',status:'refresh-cw',agency:'git-merge',send:'clipboard-list',meeting:'users'};
   $('caseTimeline').innerHTML = tl.map(e=>`<div class="relative">
     <span class="absolute -left-[26px] top-0.5 w-7 h-7 -ml-2 rounded-full bg-card border border-line grid place-items-center"><i data-lucide="${ico[e.type]||'dot'}" class="w-3.5 h-3.5 text-brand"></i></span>
     <div class="text-[10px] font-bold uppercase tracking-wide text-slate-400">${fmtShort(e.time)} ${fmtTime(e.time)} · ${esc(e.author)}</div>
@@ -2316,8 +2333,12 @@ function toggleAgency(key){ const c=DB.cases.find(x=>x.id===activeCaseId); c.age
   else { c.agencies.push(key); c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'agency',text:`Referred to ${AGENCIES[key].label}.`}); logAudit('Agency referral',`${c.studentName} · ${AGENCIES[key].label}`); }
   if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c}); persist(); openCase(activeCaseId); renderAll(); }
 function addCaseNote(){ const t=$('caseNote').value.trim(); if(!t) return; const c=DB.cases.find(x=>x.id===activeCaseId);
-  c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'note',text:t}); $('caseNote').value='';
-  logAudit('Note added',c.studentName); if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c}); persist(); renderCaseTimeline(c); renderAll(); toast('Note added'); }
+  const kind = $('caseNoteType')?.value==='meeting' ? 'meeting' : 'note';
+  const text = kind==='meeting' ? `Meeting minutes: ${t}` : t;
+  c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:kind,text}); $('caseNote').value='';
+  logAudit(kind==='meeting'?'Meeting minutes logged':'Note added',c.studentName);
+  if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
+  persist(); renderCaseTimeline(c); renderAll(); toast(kind==='meeting'?'Meeting minutes logged':'Note added'); }
 function addActionPrompt(){ $('newActionText').value=''; $('newActionDue').value=''; populateSelects(); $('newActionOwner').value=ME.name; openModal('actionModal'); }
 function saveAction(){ const t=$('newActionText').value.trim(); if(!t){ toast('Describe the action','warning'); return; }
   const c=DB.cases.find(x=>x.id===activeCaseId);
@@ -2381,7 +2402,7 @@ function reportForCurrentStudent(){ const s=studentById(activeStudentId); closeM
 // child's full safeguarding picture, not just the cases they personally logged.
 // Known limitation: actions and body-map marks have no per-entry timestamp in
 // the current data model, so they're anchored to their case's logged date.
-const CHRONOLOGY_TYPE_LABELS = { concern:'Concern', note:'Note', status:'Status change', agency:'Agency referral', assignee:'Reassigned', action:'Action', bodymap:'Body map' };
+const CHRONOLOGY_TYPE_LABELS = { concern:'Concern', note:'Note', status:'Status change', agency:'Agency referral', assignee:'Reassigned', action:'Action', bodymap:'Body map', send:'SEND update', meeting:'Meeting minutes' };
 function chronologyTypeLabel(t){ return CHRONOLOGY_TYPE_LABELS[t] || 'Update'; }
 function buildChronologyEvents(studentId){
   const ev = [];
@@ -2430,7 +2451,7 @@ function renderChronology(){
   $('chrStudentMeta').textContent = `${s.year||''}${s.form?' · '+s.form:''} · ${casesForStudent(s.id).length} concern${casesForStudent(s.id).length!==1?'s':''} on record`;
   const ev = filteredChronologyEvents();
   $('chrCount').textContent = `${ev.length} entr${ev.length!==1?'ies':'y'}`;
-  const icoMap = { concern:'shield-plus', note:'message-square', status:'refresh-cw', agency:'git-merge', assignee:'user-check', action:'list-checks', bodymap:'scan-line' };
+  const icoMap = { concern:'shield-plus', note:'message-square', status:'refresh-cw', agency:'git-merge', assignee:'user-check', action:'list-checks', bodymap:'scan-line', send:'clipboard-list', meeting:'users' };
   $('chrList').innerHTML = ev.length ? ev.map(e=>{
     const sr = safeRisk(e.risk);
     return `<div class="relative"><span class="absolute -left-[26px] top-0.5 w-7 h-7 -ml-2 rounded-full bg-${RISK[sr].soft} grid place-items-center"><i data-lucide="${icoMap[e.type]||'dot'}" class="w-3.5 h-3.5 text-${RISK[sr].color}"></i></span>
