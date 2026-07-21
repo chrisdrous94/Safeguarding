@@ -3910,7 +3910,14 @@ function updateOwnProfile(sessionUser, firstName, lastName){
 // ── Admin: user management (role re-checked server-side every call) ────────
 function listUsers(sessionUser){
   if(!canListUsersRole(sessionUser.role)) return { ok:false, error:'You do not have permission to manage users' };
-  return { ok:true, users: loadUsers().map(publicUser) };
+  const users = loadUsers();
+  if(isAdminRole(sessionUser.role)) return { ok:true, users: users.map(publicUser) };
+  // Phase heads only get enough to populate the case-assignee picker (name +
+  // role, active accounts only) — active/inactive status, email and login
+  // activity stay visible to true admins only.
+  return { ok:true, users: users.filter(function(u){ return u.active; }).map(function(u){
+    return { id:u.id, firstName:u.firstName, lastName:u.lastName, role:u.role };
+  }) };
 }
 function saveUserAction(sessionUser, id, firstName, lastName, role){
   if(!isAdminRole(sessionUser.role)) return { ok:false, error:'You do not have permission to manage users' };
