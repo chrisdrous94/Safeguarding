@@ -93,7 +93,11 @@ function secureByteHex(numBytes){
 function secureBytes(numBytes){
   const hex = secureByteHex(numBytes);
   const bytes = [];
-  for(let i=0;i<hex.length;i+=2) bytes.push(parseInt(hex.substr(i,2),16));
+  for(let i=0;i<hex.length;i+=2){
+    let v = parseInt(hex.substr(i,2),16);
+    if(v > 127) v -= 256; // Apps Script's Byte[] bridge needs Java's signed range (-128..127) —
+    bytes.push(v);        // an array with any value >127 fails to type-match and throws.
+  }
   return bytes;
 }
 function secureToken(){
