@@ -2027,8 +2027,19 @@ function submitConcern(){
 // so an expired/invalid session is actually detected — a silent no-cors
 // failure would otherwise mean an edit never reaches the sheet at all.
 async function postLive(body){
-  try{ await scriptCall(body.action, body); }
-  catch(e){ /* background sync failure; local copy is unaffected */ }
+  try{
+    const data = await scriptCall(body.action, body);
+    if(data && data.ok===false && data.code!=='AUTH'){
+      // AUTH failures already surface their own prompt via handleSessionExpired()
+      // (see scriptCall) — anything else silently failing to reach the sheet is
+      // exactly the kind of thing a DSL needs to know about immediately.
+      toast('Could not save to the Google Sheet: ' + (data.error||'unknown error'), 'error');
+      console.error('postLive failed', body.action, data);
+    }
+  }catch(e){
+    toast('Could not reach the Google Sheet — check your connection', 'error');
+    console.error('postLive threw', body.action, e);
+  }
 }
 
 // ---------- CASE detail ----------
