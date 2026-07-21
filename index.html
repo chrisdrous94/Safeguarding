@@ -10,12 +10,12 @@
   without a nonce source we don't have. What this policy does buy: script-src
   is host-allowlisted to exactly the pinned CDNs below (an attacker can't get
   a *different* script host to load even via an injected <script src>), and
-  connect-src is locked to the Apps Script domain so stolen/forged JS can't
+  connect-src is locked to the Apps Script domains so stolen/forged JS can't
   exfiltrate data elsewhere. Tailwind's Play CDN and Google Fonts are excluded
   from SRI below — neither serves a single stable-hashable file (Play CDN is
   a runtime compiler; Fonts serves UA-varying CSS) — documented, not missed.
 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://script.google.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://icanskill.com https://svgsilh.com; connect-src 'self' https://script.google.com https://script.googleusercontent.com; object-src 'none'; base-uri 'self';">
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@0.462.0/dist/umd/lucide.js" integrity="sha384-WBRt9V/J/erVtkEuP91HUFRv9MvHzFiFOp4/zTDp4xkcMG7aOeIv2asTV4yxFLWa" crossorigin="anonymous"></script>
