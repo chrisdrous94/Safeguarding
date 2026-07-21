@@ -79,7 +79,10 @@ tailwind.config = {
 <body class="min-h-screen flex flex-col md:flex-row">
 
 <!-- ===================== AUTH OVERLAY ===================== -->
-<div id="authOverlay" class="fixed inset-0 z-[200] bg-gradient-to-br from-surface via-surface to-brandSoft/5 flex items-center justify-center p-4">
+<!-- Solid background (see below) — this used to fade to brandSoft/5 (5% opacity)
+     at the far corner, letting real case data rendered underneath show through
+     visibly. Never make this less than fully opaque. -->
+<div id="authOverlay" class="fixed inset-0 z-[200] bg-surface flex items-center justify-center p-4">
   <div class="w-full max-w-sm">
     <!-- Logo & Header -->
     <div class="text-center mb-10">
@@ -4629,6 +4632,12 @@ function signOut(){
   ME.code = '';
   ME.token = '';
 
+  // Defense in depth: the auth overlay is opaque and should already hide
+  // everything, but re-render the now-empty DB anyway so no real case data
+  // is left sitting in the DOM underneath it (KPIs, charts, watchlists, etc.
+  // otherwise keep showing whatever was last rendered before sign-out).
+  try { renderAll(); } catch(e) {}
+
   // Clear auth inputs
   const loginCode = $('loginCode');
   if(loginCode) loginCode.value = '';
@@ -4675,7 +4684,10 @@ function handleSessionExpired(){
   if(!ME.token) return; // already signed out
   stopIdleTimer();
   LS.set('ics_session','');
+  LS.set('ics_db','');
   ME.token = '';
+  DB = { students:[], cases:[], audit:[] };
+  try { renderAll(); } catch(e) {} // see the matching comment in signOut()
   toast('Your session expired. Please sign in again.', 'warning');
   const overlay = $('authOverlay');
   if(overlay){ overlay.classList.remove('hidden'); overlay.style.opacity='1'; overlay.style.pointerEvents='auto'; }
