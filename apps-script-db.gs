@@ -186,6 +186,17 @@ function genCode(len){
   return out.join('');
 }
 
+// ── Generic global rate limit (used by the unauthenticated public report
+// path below — no per-caller identity is available to key on, so this caps
+// total volume rather than per-caller attempts) ─────────────────────────────
+function checkGlobalRateLimit(key, maxCount, windowSeconds){
+  const cache = CacheService.getScriptCache();
+  const count = Number(cache.get(key) || '0');
+  if(count >= maxCount) return false;
+  cache.put(key, String(count+1), windowSeconds);
+  return true;
+}
+
 // ── Rate limiting (per submitted code, so brute-forcing one code is capped
 // without locking out other users) ──────────────────────────────────────────
 function rateLimited(code, fn){
@@ -739,6 +750,28 @@ function upsertCaseRecord(payload){
     return { ok:true, rowId:rowId, case:c };
   });
 }
+// Lets a concern be filed from the sign-in screen without an account (e.g. a
+// visiting/supply staff member with no login yet — see
+// openPublicReportFromAuth() in index.html). Deliberately narrow: no session
+// required, but it can only ever create a brand-new case (the client-
+// supplied id is discarded, so this can never be used to overwrite or
+// target an existing row), status/assignee are forced rather than trusted
+// from the caller, and it's rate-limited globally since it's the one write
+// path in this API that doesn't require authentication.
+function publicSubmitConcern(payload){
+  const p = payload || {};
+  const nameV = validateString(p.studentName, 1, NAME_MAX_LENGTH);
+  if(!nameV.valid) return { ok:false, error:'Student name: ' + nameV.error };
+  if(!norm(p.category)) return { ok:false, error:'Category is required' };
+
+  if(!checkGlobalRateLimit('public_report_count', 20, 300)){
+    return { ok:false, error:'Too many concerns submitted recently. Please wait a few minutes and try again, or ask a colleague to log in and report it directly.' };
+  }
+
+  const forced = Object.assign({}, p, { status:'New', assignee:'' });
+  delete forced.id;
+  return upsertCaseRecord(forced);
+}
 function updateCaseStatus(rowId, caseId, status){
   const data = getCasesFresh().data || [];
   const c = data.find(function(x){ return String(x.rowId)===String(rowId) || x.id===caseId; });
@@ -862,6 +895,7 @@ function doPost(e){
     if(!action) return jsonOut({ ok:false, error:'Missing action' });
 
     if(action === 'login') return jsonOut(rateLimited(p.code, function(){ return loginByCode(p.code); }));
+    if(action === 'publicSyncCase') return jsonOut(publicSubmitConcern(p.payload));
 
     const session = requireSession(p.token);
     if(!session.ok) return jsonOut(session);
