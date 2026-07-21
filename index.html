@@ -1177,6 +1177,11 @@ const IS_HEAD_PRIMARY = ()=> ME.role==='Head of Primary';
 const IS_HEAD_SECONDARY = ()=> ME.role==='Head of Secondary';
 const IS_PHASE_HEAD = ()=> IS_HEAD_PRIMARY() || IS_HEAD_SECONDARY();
 const IS_ADMIN   = ()=> ME.role==='Lead DSL' || ME.role==='Principal' || IS_PHASE_HEAD();
+// Full User Management (create/edit/delete accounts, regenerate codes) stays
+// narrower than IS_ADMIN — phase heads get read access to the user list (see
+// loadAppUsers()/canListUsersRole server-side) so they can assign cases to
+// anyone school-wide, but not the ability to create or remove accounts.
+const IS_USER_MANAGER = ()=> ME.role==='Lead DSL' || ME.role==='Principal';
 const IS_DSL_OR_PRINCIPAL = ()=> ME.role==='Lead DSL' || ME.role==='Deputy DSL' || ME.role==='Principal';
 // A case's department buckets into 'Secondary' vs everything else (Primary/Extra/Camps/Weekend Club),
 // matching the existing primary/secondary split used in the SEND report.
@@ -1379,7 +1384,7 @@ function go(view){
     go('dashboard');
     return;
   }
-  if(view==='users' && !IS_ADMIN()){
+  if(view==='users' && !IS_USER_MANAGER()){
     toast('You do not have permission to manage users');
     go('dashboard');
     return;
@@ -3797,6 +3802,11 @@ function adminIdentity(){
 function isAdminRole(role){ return ADMIN_ROLES.indexOf(role) >= 0; }
 function isReportRole(role){ return REPORT_ROLES.indexOf(role) >= 0; }
 function isSendCaseRole(role){ return SEND_CASE_ROLES.indexOf(role) >= 0; }
+// Phase heads need read access to the user list so they can assign cases to
+// SENDCO/Pastoral Lead/etc. school-wide (see index.html's loadAppUsers /
+// IS_USER_MANAGER) — but not full User Management (create/edit/delete
+// accounts, regenerate codes), which stays admin-only via isAdminRole.
+function canListUsersRole(role){ return isAdminRole(role) || role==='Head of Primary' || role==='Head of Secondary'; }
 
 function findUserByName(name){
   const n = norm(name).toLowerCase();
@@ -3899,7 +3909,7 @@ function updateOwnProfile(sessionUser, firstName, lastName){
 
 // ── Admin: user management (role re-checked server-side every call) ────────
 function listUsers(sessionUser){
-  if(!isAdminRole(sessionUser.role)) return { ok:false, error:'You do not have permission to manage users' };
+  if(!canListUsersRole(sessionUser.role)) return { ok:false, error:'You do not have permission to manage users' };
   return { ok:true, users: loadUsers().map(publicUser) };
 }
 function saveUserAction(sessionUser, id, firstName, lastName, role){

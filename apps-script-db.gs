@@ -380,6 +380,11 @@ function adminIdentity(){
 function isAdminRole(role){ return ADMIN_ROLES.indexOf(role) >= 0; }
 function isReportRole(role){ return REPORT_ROLES.indexOf(role) >= 0; }
 function isSendCaseRole(role){ return SEND_CASE_ROLES.indexOf(role) >= 0; }
+// Phase heads need read access to the user list so they can assign cases to
+// SENDCO/Pastoral Lead/etc. school-wide (see index.html's loadAppUsers /
+// IS_USER_MANAGER) — but not full User Management (create/edit/delete
+// accounts, regenerate codes), which stays admin-only via isAdminRole.
+function canListUsersRole(role){ return isAdminRole(role) || role==='Head of Primary' || role==='Head of Secondary'; }
 
 function findUserByName(name){
   const n = norm(name).toLowerCase();
@@ -482,7 +487,7 @@ function updateOwnProfile(sessionUser, firstName, lastName){
 
 // ── Admin: user management (role re-checked server-side every call) ────────
 function listUsers(sessionUser){
-  if(!isAdminRole(sessionUser.role)) return { ok:false, error:'You do not have permission to manage users' };
+  if(!canListUsersRole(sessionUser.role)) return { ok:false, error:'You do not have permission to manage users' };
   return { ok:true, users: loadUsers().map(publicUser) };
 }
 function saveUserAction(sessionUser, id, firstName, lastName, role){
