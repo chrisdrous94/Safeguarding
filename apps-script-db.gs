@@ -29,7 +29,7 @@ const SEND_CASE_ROLES = ['Lead DSL', 'Deputy DSL', 'Principal', 'SENDCO'];
 // existing user saved under it must keep working.
 const ADMIN_ROLES = ['Lead DSL', 'Principal', 'Senior Leadership'];
 // Roles assignable from the "create/edit user" form today.
-const VALID_ROLES = ['Teacher', 'SENDCO', 'Pastoral Lead', 'Deputy DSL', 'Head of Primary', 'Head of Secondary', 'Lead DSL', 'Principal'];
+const VALID_ROLES = ['Teacher', 'SENDCO', 'Pastoral Lead', 'Deputy DSL', 'Head of Primary', 'Head of Secondary', 'Head of Extra', 'Lead DSL', 'Principal'];
 
 const CODE_MIN_LENGTH = 6;
 const CODE_MAX_LENGTH = 24;
@@ -380,11 +380,12 @@ function adminIdentity(){
 function isAdminRole(role){ return ADMIN_ROLES.indexOf(role) >= 0; }
 function isReportRole(role){ return REPORT_ROLES.indexOf(role) >= 0; }
 function isSendCaseRole(role){ return SEND_CASE_ROLES.indexOf(role) >= 0; }
-// Phase heads need read access to the user list so they can assign cases to
-// SENDCO/Pastoral Lead/etc. school-wide (see index.html's loadAppUsers /
-// IS_USER_MANAGER) — but not full User Management (create/edit/delete
-// accounts, regenerate codes), which stays admin-only via isAdminRole.
-function canListUsersRole(role){ return isAdminRole(role) || role==='Head of Primary' || role==='Head of Secondary'; }
+// Phase heads (and Head of Extra, who spans both phases) need read access to
+// the user list so they can assign cases to SENDCO/Pastoral Lead/etc.
+// school-wide (see index.html's loadAppUsers / IS_USER_MANAGER) — but not
+// full User Management (create/edit/delete accounts, regenerate codes),
+// which stays admin-only via isAdminRole.
+function canListUsersRole(role){ return isAdminRole(role) || role==='Head of Primary' || role==='Head of Secondary' || role==='Head of Extra'; }
 
 function findUserByName(name){
   const n = norm(name).toLowerCase();
@@ -556,14 +557,15 @@ function deleteUser(sessionUser, id){
 }
 
 // ── Email notifications ─────────────────────────────────────────────────────
-function notifyAssignee(assignee, caseId, studentName, category, notifier){
-  const names = String(assignee).split(',').map(function(s){ return s.trim(); }).filter(Boolean);
-  names.forEach(function(name){
-    const u = findUserByName(name);
-    if(!u || !u.email) return;
+// Cases are assigned to a role, not an individual (see index.html's
+// ASSIGNABLE_ROLES / renderCaseAssignee) — so everyone active in that role
+// gets notified, not a single named user.
+function notifyAssignee(role, caseId, studentName, category, notifier){
+  const users = loadUsers().filter(function(u){ return u.active && u.role===role && u.email; });
+  users.forEach(function(u){
     try {
-      MailApp.sendEmail({ to:u.email, subject:'[Safeguarding] You have been assigned a case: ' + studentName,
-        body:'You have been assigned to a safeguarding case by ' + (notifier||'the system') + '.\n\n'
+      MailApp.sendEmail({ to:u.email, subject:'[Safeguarding] A case has been assigned to your role (' + role + '): ' + studentName,
+        body:'A safeguarding case has been assigned to the ' + role + ' role by ' + (notifier||'the system') + '.\n\n'
           + 'Student: ' + studentName + '\nCategory: ' + category + '\nCase reference: ' + caseId + '\n\n'
           + 'Please log in to review the full case record, chronology and any outstanding actions.\n\n'
           + 'This is an automated notification. Do not reply to this email.' });

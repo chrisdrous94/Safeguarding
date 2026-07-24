@@ -374,7 +374,7 @@ tailwind.config = {
     <div id="sendCaseHomeCard" class="hidden bg-card rounded-4xl border border-line shadow-soft p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div>
         <h3 class="font-display font-bold text-base text-ink">Log a SEND case</h3>
-        <p class="text-xs text-slate-400 font-medium mt-0.5">Add a student to Under Observation, Intervention Plans, Formal IEP, External Assessment Pending or External Diagnoses Received — feeds the whole-school SEND report automatically</p>
+        <p class="text-xs text-slate-400 font-medium mt-0.5">Add a student to Under Observation, Intervention Plans, Formal IESP, External Assessment Pending or External Diagnoses Received — feeds the whole-school SEND report automatically</p>
       </div>
       <button onclick="openSendCaseModal()" class="h-11 px-5 rounded-full bg-brand hover:bg-brandDark text-white text-sm font-bold flex items-center gap-2 shadow-soft shrink-0"><i data-lucide="clipboard-plus" class="w-4 h-4"></i>Log SEND case</button>
     </div>
@@ -661,7 +661,7 @@ tailwind.config = {
         <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Reported by</label>
         <input id="rReporter" class="w-full h-12 px-4 rounded-2xl bg-card border border-line text-sm font-medium"></div>
       </div>
-      <div>
+      <div id="rStrategiesSection" class="hidden">
         <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Teaching/Learning strategies implemented</label>
         <p class="text-[11px] text-slate-400 mb-3 font-medium">Tick all strategies you have consistently used before making this referral.</p>
         <div id="rStrategiesGrid" class="space-y-4"></div>
@@ -824,9 +824,9 @@ tailwind.config = {
           <div><label class="block text-xs font-bold text-slate-600 mb-1.5">Name</label><input id="setName" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-medium"></div>
           <div><label class="block text-xs font-bold text-slate-600 mb-1.5">Role</label>
           <select id="setRole" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-bold">
-            <option>Lead DSL</option><option>Deputy DSL</option><option>Head of Primary</option><option>Head of Secondary</option><option>Principal</option><option>SENDCO</option><option>Pastoral Lead</option><option>Teacher</option></select></div>
+            <option>Lead DSL</option><option>Deputy DSL</option><option>Head of Primary</option><option>Head of Secondary</option><option>Head of Extra</option><option>Principal</option><option>SENDCO</option><option>Pastoral Lead</option><option>Teacher</option></select></div>
         </div>
-        <p class="text-[11px] text-slate-400 font-medium">Teachers, SENDCO and Deputy DSLs see concerns assigned to them, reported by them, and all concerns linked to students assigned to them. Head of Primary/Head of Secondary see all cases for students in their phase. Lead DSL and Principal see all cases and the whole-school dashboard.</p>
+        <p class="text-[11px] text-slate-400 font-medium">Teachers, SENDCO and Deputy DSLs see concerns assigned to them, reported by them, and all concerns linked to students assigned to them. Head of Primary/Head of Secondary see all cases for students in their phase. Head of Extra sees all cases across both phases. Lead DSL and Principal see all cases and the whole-school dashboard.</p>
       </div>
       <div class="bg-card rounded-2xl border border-line p-4 space-y-3">
         <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Data source</h4>
@@ -974,6 +974,7 @@ tailwind.config = {
           <option value="Lead DSL">Lead DSL</option>
           <option value="Head of Primary">Head of Primary</option>
           <option value="Head of Secondary">Head of Secondary</option>
+          <option value="Head of Extra">Head of Extra</option>
           <option value="Principal">Principal</option>
         </select>
       </div>
@@ -1094,7 +1095,6 @@ const CATEGORIES = {
   'Communication and Language': { icon:'message-circle', color:'med', subs:['Delayed speech / language','Difficulty expressing needs','Speech / language disorder','Selective mutism','Accent / dialect difference'] },
   'Cognition and Learning': { icon:'lightbulb', color:'med', subs:['Difficulty with understanding','Difficulty processing information','Difficulty completing work','Learning disability','Development delay'] },
   'Social Interaction': { icon:'users-round', color:'med', subs:['Difficulty working with peers','Social isolation','Withdrawn behaviour','Difficulty making friends','Social anxiety'] },
-  'Behaviour':           { icon:'alert-triangle', color:'high', subs:['Disruptive behaviour','Aggression / violence','Non-compliance / defiance','Repeated rule-breaking','Emotional dysregulation'] },
   'Other welfare':       { icon:'info', color:'low', subs:['Bereavement','Young carer pressure','Housing / poverty','General wellbeing'] }
 };
 
@@ -1119,6 +1119,12 @@ const AGENCIES = {
   HOPE:       { label:'Hope for Children', icon:'heart-handshake', color:'earlyhelp' },
   External:  { label:'External Associates', icon:'briefcase', color:'social' }
 };
+
+// Cases are assigned to a role (not an individual) \u2014 kept in sync with the
+// VALID_ROLES list in apps-script-db.gs. Anyone holding the assigned role can
+// see/action the case (see visibleCases()/renderStudents()'s ME.role checks)
+// and everyone active in that role is emailed (see notifyAssignee server-side).
+const ASSIGNABLE_ROLES = ['Teacher', 'SENDCO', 'Pastoral Lead', 'Deputy DSL', 'Head of Primary', 'Head of Secondary', 'Head of Extra', 'Lead DSL', 'Principal'];
 
 const STRATEGY_GROUPS = [
   { title:'Classroom Environment', items:[
@@ -1191,7 +1197,11 @@ const IS_TEACHER = ()=> ME.role==='Teacher' || ME.role==='Pastoral Lead' || ME.r
 const IS_HEAD_PRIMARY = ()=> ME.role==='Head of Primary';
 const IS_HEAD_SECONDARY = ()=> ME.role==='Head of Secondary';
 const IS_PHASE_HEAD = ()=> IS_HEAD_PRIMARY() || IS_HEAD_SECONDARY();
-const IS_ADMIN   = ()=> ME.role==='Lead DSL' || ME.role==='Principal' || IS_PHASE_HEAD();
+// Head of Extra spans both phases, so it's deliberately excluded from
+// IS_PHASE_HEAD (which drives the single-phase filter in visibleCases()/
+// renderStudents()) — it gets DSL-equivalent unfiltered access instead.
+const IS_HEAD_EXTRA = ()=> ME.role==='Head of Extra';
+const IS_ADMIN   = ()=> ME.role==='Lead DSL' || ME.role==='Principal' || IS_PHASE_HEAD() || IS_HEAD_EXTRA();
 // Full User Management (create/edit/delete accounts, regenerate codes) stays
 // narrower than IS_ADMIN — phase heads get read access to the user list (see
 // loadAppUsers()/canListUsersRole server-side) so they can assign cases to
@@ -1326,17 +1336,17 @@ function logAudit(action, detail, who, when){
 
 // ---------- Role-based visibility ----------
 function visibleCases(){
-  if(ME.role==='Lead DSL' || ME.role==='Principal') return DB.cases;
+  if(ME.role==='Lead DSL' || ME.role==='Principal' || IS_HEAD_EXTRA()) return DB.cases;
   if(IS_PHASE_HEAD()) return DB.cases.filter(c=> caseInPhase(c, IS_HEAD_SECONDARY()?'Secondary':'Primary'));
   const myName = (ME.name||'').toLowerCase().trim();
 
-  const getAssignees = (assignee) => {
+  const getAssigneeRoles = (assignee) => {
     if(!assignee) return [];
-    if(Array.isArray(assignee)) return assignee.map(a => String(a).toLowerCase().trim());
-    return String(assignee).split(',').map(s => s.trim()).filter(Boolean).map(a => a.toLowerCase());
+    if(Array.isArray(assignee)) return assignee.map(a => String(a).trim());
+    return String(assignee).split(',').map(s => s.trim()).filter(Boolean);
   };
 
-  const isAssignedToMe = (c) => getAssignees(c.assignee).includes(myName);
+  const isAssignedToMe = (c) => getAssigneeRoles(c.assignee).includes(ME.role);
 
   const assignedStudentIds = new Set(DB.cases.filter(isAssignedToMe).map(c => c.studentId));
 
@@ -1811,7 +1821,6 @@ function renderStudents(){
   const q=($('stuSearch')?.value||'').toLowerCase();
   const flag=$('stuFlag')?.value||'All';
   const isDSL = IS_ADMIN();
-  const myName = (ME.name||'').toLowerCase().trim();
   let full=DB.students.filter(s=>{
     if(q && !`${s.name} ${s.form} ${s.year}`.toLowerCase().includes(q)) return false;
     if(flag==='risk'){ if(!casesForStudent(s.id).some(isOpen)) return false; }
@@ -1821,11 +1830,11 @@ function renderStudents(){
       const phase = IS_HEAD_SECONDARY()?'Secondary':'Primary';
       if(!casesForStudent(s.id).some(c=>caseInPhase(c, phase))) return false;
     }
-    // Non-DSL users only see students they're assigned to
+    // Non-DSL users only see students with a case assigned to their role
     if(!isDSL){
       const assignedCases = casesForStudent(s.id).filter(c=>{
         const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(str=>str.trim()).filter(Boolean);
-        return assigneeList.some(a => a.toLowerCase().trim() === myName);
+        return assigneeList.includes(ME.role);
       });
       if(!assignedCases.length) return false;
     }
@@ -1943,6 +1952,7 @@ function openReport(prefillName){
   $('rStrategyDuration').value='';
   document.querySelectorAll('input[name="rStrategy"]').forEach(cb=> cb.checked=false);
   $('rSubWrap').classList.add('hidden');
+  $('rStrategiesSection').classList.add('hidden');
   renderStrategyCheckboxes();
   renderDurationButtons();
   $('rCategoryGrid').innerHTML = Object.entries(CATEGORIES).map(([name,m])=>`
@@ -1978,6 +1988,8 @@ function pickCategory(name){
   const subs=CATEGORIES[name].subs;
   $('rSubWrap').classList.remove('hidden');
   $('rSubcategory').innerHTML='<option value="">Select nature (optional)…</option>'+subs.map(s=>`<option>${s}</option>`).join('');
+  const showStrategies = name==='Communication and Language' || name==='Cognition and Learning';
+  $('rStrategiesSection').classList.toggle('hidden', !showStrategies);
 }
 function pickRisk(r){ $('rRisk').value=r;
   document.querySelectorAll('.rrisk').forEach(b=>{ const on=b.dataset.risk===r; const k=RISK[safeRisk(b.dataset.risk)];
@@ -2308,31 +2320,30 @@ function changeStatus(){ const c=DB.cases.find(x=>x.id===activeCaseId); const v=
   logAudit('Status updated', `${c.studentName} → ${v}`); if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
   persist(); renderCaseTimeline(c); renderAll(); toast('Status updated'); }
 function renderCaseAssignee(c){
-  const assignees=assigneeNames();
   const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(s=>s.trim()).filter(Boolean);
   const isDSL = IS_ADMIN();
-  $('caseAssignee').innerHTML = assignees.length ? assignees.map(t=>{
-    const on = assigneeList.includes(t);
-    const safe = t.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+  $('caseAssignee').innerHTML = ASSIGNABLE_ROLES.map(role=>{
+    const on = assigneeList.includes(role);
+    const safe = role.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     return `<button type="button" ${isDSL?`onclick="toggleAssignee('${safe}')"`:'disabled'} class="inline-flex items-center gap-1 pl-2.5 pr-2 h-7 rounded-full border-2 text-[11px] font-bold transition-colors ${on?'border-brand bg-brandSoft text-brandDark':'border-line bg-card text-slate-600'} ${isDSL?'hover:border-brand/40':'opacity-70 cursor-default'}">
-      ${esc(t)}<i data-lucide="${on?'check':'plus'}" class="w-3 h-3 ${on?'text-brandDark':'text-slate-300'}"></i></button>`;
-  }).join('') : '<p class="text-xs text-slate-400 font-medium italic">No users available to assign.</p>';
+      ${esc(role)}<i data-lucide="${on?'check':'plus'}" class="w-3 h-3 ${on?'text-brandDark':'text-slate-300'}"></i></button>`;
+  }).join('');
   icons();
 }
-function toggleAssignee(name){
+function toggleAssignee(role){
   const isDSL = IS_ADMIN();
   if(!isDSL) { toast('Only DSL can assign cases','warning'); return; }
   const c=DB.cases.find(x=>x.id===activeCaseId);
   const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(s=>s.trim()).filter(Boolean);
-  const idx = assigneeList.indexOf(name);
+  const idx = assigneeList.indexOf(role);
   const added = idx<0;
-  if(added) assigneeList.push(name); else assigneeList.splice(idx,1);
+  if(added) assigneeList.push(role); else assigneeList.splice(idx,1);
   c.assignee = assigneeList.join(',');
   const assigneeText = assigneeList.length ? `Assigned to ${assigneeList.join(', ')}.` : 'Unassigned.';
   c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'note',text:assigneeText});
   logAudit('Case reassigned', `${c.studentName} → ${c.assignee||'Unassigned'}`);
   if(SOURCE==='live'&&SCRIPT_URL){ postLive({action:'syncCase',payload:c});
-    if(added && CAN_USE_APPS_SCRIPT()) scriptCall('notifyAssignee',{assignee:name,caseId:c.id,studentName:c.studentName,category:c.category,notifier:ME.name}).catch(()=>{});
+    if(added && CAN_USE_APPS_SCRIPT()) scriptCall('notifyAssignee',{assignee:role,caseId:c.id,studentName:c.studentName,category:c.category,notifier:ME.name}).catch(()=>{});
   }
   persist(); renderCaseAssignee(c); renderCaseTimeline(c); renderAll(); toast(added?'Assignee added — notification sent':'Assignee removed'); }
 function toggleAgency(key){ const c=DB.cases.find(x=>x.id===activeCaseId); c.agencies=c.agencies||[];
@@ -2772,7 +2783,7 @@ const SR_OVERVIEW_FIELDS = [
   { key:'newReferrals',      label:'New SEND Referrals this month' },
   { key:'underObservation',  label:'Under Observation (ROI Stage 2)' },
   { key:'interventionPlans', label:'Intervention Plans' },
-  { key:'formalIEPs',        label:'Formal IEPs' },
+  { key:'formalIEPs',        label:'Formal IESPs' },
   { key:'extAssessPending',  label:'External Assessments Pending' },
   { key:'extDiagnoses',      label:'External Diagnoses Received' }
 ];
@@ -3264,7 +3275,7 @@ async function renderSendReport(){
   const stats = [
     { label:'Avg. time referral → observation',          value: SEND_REPORT.stats.avgReferralToObs || '—', unit:'days' , icon:'clock' },
     { label:'Avg. time observation → parent meeting',    value: SEND_REPORT.stats.avgObsToParent || '—',   unit:'days' , icon:'users-round' },
-    { label:'IEP reviews due in selected period',          value: SEND_REPORT.stats.iepReviewsDue || '0',    unit:''     , icon:'clipboard-list' },
+    { label:'IESP reviews due in selected period',          value: SEND_REPORT.stats.iepReviewsDue || '0',    unit:''     , icon:'clipboard-list' },
     { label:'Safeguarding cases requiring monitoring',    value: visibleCases().filter(c=>c.status==='Monitoring').length, unit:'', icon:'shield-check', live:true },
     { label:'Staff referrals submitted in selected period', value: visibleCases().filter(c=>inWindow(c.date, srStart, srEnd)).length, unit:'', icon:'users', live:true }
   ];
@@ -3339,7 +3350,7 @@ async function exportSendReportCSV(){
   rows.push(['Statistic', 'Value']);
   rows.push(['Avg. days referral to observation', SEND_REPORT.stats.avgReferralToObs || '—']);
   rows.push(['Avg. days observation to parent meeting', SEND_REPORT.stats.avgObsToParent || '—']);
-  rows.push(['IEP reviews due in selected period', SEND_REPORT.stats.iepReviewsDue || '0']);
+  rows.push(['IESP reviews due in selected period', SEND_REPORT.stats.iepReviewsDue || '0']);
   rows.push(['Cases requiring monitoring', visibleCases().filter(c=>c.status==='Monitoring').length]);
   rows.push(['Staff referrals in selected period', visibleCases().filter(c=>inWindow(c.date, srStart, srEnd)).length]);
   rows.push([]);
@@ -3447,7 +3458,7 @@ async function exportSendReportPDF(){
         <tr><th>Statistic</th><th>Value</th></tr>
         <tr><td>Avg. time referral to observation</td><td>${SEND_REPORT.stats.avgReferralToObs || '—'}</td></tr>
         <tr><td>Avg. time observation to parent meeting</td><td>${SEND_REPORT.stats.avgObsToParent || '—'}</td></tr>
-        <tr><td>IEP reviews due in selected period</td><td>${SEND_REPORT.stats.iepReviewsDue || '0'}</td></tr>
+        <tr><td>IESP reviews due in selected period</td><td>${SEND_REPORT.stats.iepReviewsDue || '0'}</td></tr>
         <tr><td>Cases requiring monitoring</td><td>${visibleCases().filter(c=>c.status==='Monitoring').length}</td></tr>
         <tr><td>Staff referrals in selected period</td><td>${visibleCases().filter(c=>inWindow(c.date, srStart, srEnd)).length}</td></tr>
       </table>
@@ -3534,7 +3545,7 @@ async function openSendReportEdit(){
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div><label class="block text-xs font-bold text-slate-600 mb-1">Avg. days referral → observation</label><input type="number" min="0" id="sr_stat_avgReferralToObs" value="${esc(s.stats.avgReferralToObs)}" class="w-full h-10 px-3 rounded-xl bg-dim border border-transparent text-sm font-semibold"></div>
         <div><label class="block text-xs font-bold text-slate-600 mb-1">Avg. days observation → parent meeting</label><input type="number" min="0" id="sr_stat_avgObsToParent" value="${esc(s.stats.avgObsToParent)}" class="w-full h-10 px-3 rounded-xl bg-dim border border-transparent text-sm font-semibold"></div>
-        <div><label class="block text-xs font-bold text-slate-600 mb-1">IEP reviews due this month</label><input type="number" min="0" id="sr_stat_iepReviewsDue" value="${esc(s.stats.iepReviewsDue)}" class="w-full h-10 px-3 rounded-xl bg-dim border border-transparent text-sm font-semibold"></div>
+        <div><label class="block text-xs font-bold text-slate-600 mb-1">IESP reviews due this month</label><input type="number" min="0" id="sr_stat_iepReviewsDue" value="${esc(s.stats.iepReviewsDue)}" class="w-full h-10 px-3 rounded-xl bg-dim border border-transparent text-sm font-semibold"></div>
       </div>
       <p class="text-[11px] text-slate-400 font-medium">Safeguarding cases requiring monitoring and staff referrals this month are calculated live and don't need entering here.</p>
     </div>
@@ -3606,7 +3617,7 @@ const SEND_CASE_ROLES = ['Lead DSL', 'Deputy DSL', 'Principal', 'SENDCO'];
 // existing user saved under it must keep working.
 const ADMIN_ROLES = ['Lead DSL', 'Principal', 'Senior Leadership'];
 // Roles assignable from the "create/edit user" form today.
-const VALID_ROLES = ['Teacher', 'SENDCO', 'Pastoral Lead', 'Deputy DSL', 'Head of Primary', 'Head of Secondary', 'Lead DSL', 'Principal'];
+const VALID_ROLES = ['Teacher', 'SENDCO', 'Pastoral Lead', 'Deputy DSL', 'Head of Primary', 'Head of Secondary', 'Head of Extra', 'Lead DSL', 'Principal'];
 
 const CODE_MIN_LENGTH = 6;
 const CODE_MAX_LENGTH = 24;
@@ -3957,11 +3968,12 @@ function adminIdentity(){
 function isAdminRole(role){ return ADMIN_ROLES.indexOf(role) >= 0; }
 function isReportRole(role){ return REPORT_ROLES.indexOf(role) >= 0; }
 function isSendCaseRole(role){ return SEND_CASE_ROLES.indexOf(role) >= 0; }
-// Phase heads need read access to the user list so they can assign cases to
-// SENDCO/Pastoral Lead/etc. school-wide (see index.html's loadAppUsers /
-// IS_USER_MANAGER) — but not full User Management (create/edit/delete
-// accounts, regenerate codes), which stays admin-only via isAdminRole.
-function canListUsersRole(role){ return isAdminRole(role) || role==='Head of Primary' || role==='Head of Secondary'; }
+// Phase heads (and Head of Extra, who spans both phases) need read access to
+// the user list so they can assign cases to SENDCO/Pastoral Lead/etc.
+// school-wide (see index.html's loadAppUsers / IS_USER_MANAGER) — but not
+// full User Management (create/edit/delete accounts, regenerate codes),
+// which stays admin-only via isAdminRole.
+function canListUsersRole(role){ return isAdminRole(role) || role==='Head of Primary' || role==='Head of Secondary' || role==='Head of Extra'; }
 
 function findUserByName(name){
   const n = norm(name).toLowerCase();
@@ -4133,14 +4145,15 @@ function deleteUser(sessionUser, id){
 }
 
 // ── Email notifications ─────────────────────────────────────────────────────
-function notifyAssignee(assignee, caseId, studentName, category, notifier){
-  const names = String(assignee).split(',').map(function(s){ return s.trim(); }).filter(Boolean);
-  names.forEach(function(name){
-    const u = findUserByName(name);
-    if(!u || !u.email) return;
+// Cases are assigned to a role, not an individual (see index.html's
+// ASSIGNABLE_ROLES / renderCaseAssignee) — so everyone active in that role
+// gets notified, not a single named user.
+function notifyAssignee(role, caseId, studentName, category, notifier){
+  const users = loadUsers().filter(function(u){ return u.active && u.role===role && u.email; });
+  users.forEach(function(u){
     try {
-      MailApp.sendEmail({ to:u.email, subject:'[Safeguarding] You have been assigned a case: ' + studentName,
-        body:'You have been assigned to a safeguarding case by ' + (notifier||'the system') + '.\\n\\n'
+      MailApp.sendEmail({ to:u.email, subject:'[Safeguarding] A case has been assigned to your role (' + role + '): ' + studentName,
+        body:'A safeguarding case has been assigned to the ' + role + ' role by ' + (notifier||'the system') + '.\\n\\n'
           + 'Student: ' + studentName + '\\nCategory: ' + category + '\\nCase reference: ' + caseId + '\\n\\n'
           + 'Please log in to review the full case record, chronology and any outstanding actions.\\n\\n'
           + 'This is an automated notification. Do not reply to this email.' });
@@ -5024,7 +5037,7 @@ async function renderUsers(){
     const users=data.users;
     APP_USERS = users.map(u => `${u.firstName} ${u.lastName}`.trim()).filter(Boolean);
     if(!users.length){ el.innerHTML=emptyState('users','No users yet','Create the first user to give them access to the platform.'); return; }
-    const roleColor={'Lead DSL':'crit','Head of Primary':'crit','Head of Secondary':'crit','Principal':'crit','Deputy DSL':'high','SENDCO':'med','Pastoral Lead':'med','Teacher':'low'};
+    const roleColor={'Lead DSL':'crit','Head of Primary':'crit','Head of Secondary':'crit','Head of Extra':'crit','Principal':'crit','Deputy DSL':'high','SENDCO':'med','Pastoral Lead':'med','Teacher':'low'};
     el.innerHTML=users.map(u=>{
       const full=`${esc(u.firstName)} ${esc(u.lastName)}`;
       const rc=roleColor[u.role]||'low';
