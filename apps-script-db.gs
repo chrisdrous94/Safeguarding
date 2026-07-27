@@ -78,6 +78,15 @@ function validateRole(value){
   if(VALID_ROLES.indexOf(value) < 0) return { valid:false, error:'Role must be one of: ' + VALID_ROLES.join(', ') };
   return { valid:true, value:value };
 }
+// Email is optional on a user record, but required for that user to receive
+// any assignment/action notifications (see notifyAssignee/notifyActionOwner)
+// — so an empty value is accepted, but a non-empty one must look like an email.
+function validateEmail(value){
+  const trimmed = norm(value);
+  if(!trimmed) return { valid:true, value:'' };
+  if(trimmed.length > NAME_MAX_LENGTH || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return { valid:false, error:'Enter a valid email address' };
+  return { valid:true, value:trimmed };
+}
 
 // ── Hashing / crypto helpers ────────────────────────────────────────────────
 function bytesToHex(bytes){
@@ -498,7 +507,7 @@ function listUsers(sessionUser){
     return { id:u.id, firstName:u.firstName, lastName:u.lastName, role:u.role };
   }) };
 }
-function saveUserAction(sessionUser, id, firstName, lastName, role){
+function saveUserAction(sessionUser, id, firstName, lastName, role, email){
   if(!isAdminRole(sessionUser.role)) return { ok:false, error:'You do not have permission to manage users' };
   const fnV = validateString(firstName, 1, NAME_MAX_LENGTH);
   const lnV = validateString(lastName, 1, NAME_MAX_LENGTH);
@@ -506,18 +515,20 @@ function saveUserAction(sessionUser, id, firstName, lastName, role){
   if(!lnV.valid) return { ok:false, error:'Last name: ' + lnV.error };
   const roleV = validateRole(norm(role) || 'Teacher');
   if(!roleV.valid) return { ok:false, error:roleV.error };
+  const emailV = validateEmail(email);
+  if(!emailV.valid) return { ok:false, error:emailV.error };
 
   return withLock(function(){
     const users = loadUsers();
     let u = users.find(function(x){ return x.id === id; });
     if(u){
-      u.firstName = fnV.value; u.lastName = lnV.value; u.role = roleV.value; u.updatedAt = nowIso();
+      u.firstName = fnV.value; u.lastName = lnV.value; u.role = roleV.value; u.email = emailV.value; u.updatedAt = nowIso();
       saveUsers(users);
       return { ok:true, user:publicUser(u) };
     }
     const code = genCode(14);
     u = { id:'u_'+Utilities.getUuid().replace(/-/g,'').slice(0,12), firstName:fnV.value, lastName:lnV.value,
-      role:roleV.value, email:'', codeHash:hashCodeStrong(code), active:true, createdAt:nowIso(), updatedAt:nowIso(), lastLogin:'' };
+      role:roleV.value, email:emailV.value, codeHash:hashCodeStrong(code), active:true, createdAt:nowIso(), updatedAt:nowIso(), lastLogin:'' };
     users.push(u);
     saveUsers(users);
     const out = publicUser(u); out.code = code;
@@ -952,7 +963,7 @@ function doPost(e){
       case 'saveSendCase': return jsonOut(saveSendCase(user, p.payload));
       case 'deleteSendCase': return jsonOut(deleteSendCase(user, p.id));
       case 'listUsers': return jsonOut(listUsers(user));
-      case 'saveUser': return jsonOut(saveUserAction(user, p.id, p.firstName, p.lastName, p.role));
+      case 'saveUser': return jsonOut(saveUserAction(user, p.id, p.firstName, p.lastName, p.role, p.email));
       case 'regenUserCode': return jsonOut(regenUserCode(user, p.id));
       case 'toggleUser': return jsonOut(toggleUser(user, p.id));
       case 'deleteUser': return jsonOut(deleteUser(user, p.id));

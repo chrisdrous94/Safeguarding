@@ -666,13 +666,13 @@ tailwind.config = {
         <p class="text-[11px] text-slate-400 mb-3 font-medium">Tick all strategies you have consistently used before making this referral.</p>
         <div id="rStrategiesGrid" class="space-y-4"></div>
       </div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div id="rStrategyImpactSection" class="hidden grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Which strategies had the greatest positive impact?</label>
         <textarea id="rStrategyImpactPositive" rows="2" class="w-full px-4 py-3 rounded-2xl bg-card border border-line text-sm font-medium resize-none"></textarea></div>
         <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Which strategies had little or no impact?</label>
         <textarea id="rStrategyImpactNone" rows="2" class="w-full px-4 py-3 rounded-2xl bg-card border border-line text-sm font-medium resize-none"></textarea></div>
       </div>
-      <div>
+      <div id="rSendcoReasonSection" class="hidden">
         <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Why are you requesting a SENDCo observation or support at this stage?</label>
         <textarea id="rSendcoReason" rows="3" class="w-full px-4 py-3 rounded-2xl bg-card border border-line text-sm font-medium resize-none"></textarea>
       </div>
@@ -977,6 +977,11 @@ tailwind.config = {
           <option value="Head of Extra">Head of Extra</option>
           <option value="Principal">Principal</option>
         </select>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-600 mb-1.5">Email</label>
+        <input id="uEmail" type="email" placeholder="sarah.johnson@school.org" class="w-full h-11 px-3 rounded-xl bg-card border border-line text-sm font-medium">
+        <p class="text-[11px] text-slate-400 mt-1 font-medium">Needed to receive case-assignment and action email notifications.</p>
       </div>
     </div>
     <input type="hidden" id="uEditId">
@@ -1953,6 +1958,8 @@ function openReport(prefillName){
   document.querySelectorAll('input[name="rStrategy"]').forEach(cb=> cb.checked=false);
   $('rSubWrap').classList.add('hidden');
   $('rStrategiesSection').classList.add('hidden');
+  $('rStrategyImpactSection').classList.add('hidden');
+  $('rSendcoReasonSection').classList.add('hidden');
   renderStrategyCheckboxes();
   renderDurationButtons();
   $('rCategoryGrid').innerHTML = Object.entries(CATEGORIES).map(([name,m])=>`
@@ -1990,6 +1997,8 @@ function pickCategory(name){
   $('rSubcategory').innerHTML='<option value="">Select nature (optional)…</option>'+subs.map(s=>`<option>${s}</option>`).join('');
   const showStrategies = name==='Communication and Language' || name==='Cognition and Learning';
   $('rStrategiesSection').classList.toggle('hidden', !showStrategies);
+  $('rStrategyImpactSection').classList.toggle('hidden', !showStrategies);
+  $('rSendcoReasonSection').classList.toggle('hidden', !showStrategies);
 }
 function pickRisk(r){ $('rRisk').value=r;
   document.querySelectorAll('.rrisk').forEach(b=>{ const on=b.dataset.risk===r; const k=RISK[safeRisk(b.dataset.risk)];
@@ -3666,6 +3675,15 @@ function validateRole(value){
   if(VALID_ROLES.indexOf(value) < 0) return { valid:false, error:'Role must be one of: ' + VALID_ROLES.join(', ') };
   return { valid:true, value:value };
 }
+// Email is optional on a user record, but required for that user to receive
+// any assignment/action notifications (see notifyAssignee/notifyActionOwner)
+// — so an empty value is accepted, but a non-empty one must look like an email.
+function validateEmail(value){
+  const trimmed = norm(value);
+  if(!trimmed) return { valid:true, value:'' };
+  if(trimmed.length > NAME_MAX_LENGTH || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(trimmed)) return { valid:false, error:'Enter a valid email address' };
+  return { valid:true, value:trimmed };
+}
 
 // ── Hashing / crypto helpers ────────────────────────────────────────────────
 function bytesToHex(bytes){
@@ -4086,7 +4104,7 @@ function listUsers(sessionUser){
     return { id:u.id, firstName:u.firstName, lastName:u.lastName, role:u.role };
   }) };
 }
-function saveUserAction(sessionUser, id, firstName, lastName, role){
+function saveUserAction(sessionUser, id, firstName, lastName, role, email){
   if(!isAdminRole(sessionUser.role)) return { ok:false, error:'You do not have permission to manage users' };
   const fnV = validateString(firstName, 1, NAME_MAX_LENGTH);
   const lnV = validateString(lastName, 1, NAME_MAX_LENGTH);
@@ -4094,18 +4112,20 @@ function saveUserAction(sessionUser, id, firstName, lastName, role){
   if(!lnV.valid) return { ok:false, error:'Last name: ' + lnV.error };
   const roleV = validateRole(norm(role) || 'Teacher');
   if(!roleV.valid) return { ok:false, error:roleV.error };
+  const emailV = validateEmail(email);
+  if(!emailV.valid) return { ok:false, error:emailV.error };
 
   return withLock(function(){
     const users = loadUsers();
     let u = users.find(function(x){ return x.id === id; });
     if(u){
-      u.firstName = fnV.value; u.lastName = lnV.value; u.role = roleV.value; u.updatedAt = nowIso();
+      u.firstName = fnV.value; u.lastName = lnV.value; u.role = roleV.value; u.email = emailV.value; u.updatedAt = nowIso();
       saveUsers(users);
       return { ok:true, user:publicUser(u) };
     }
     const code = genCode(14);
     u = { id:'u_'+Utilities.getUuid().replace(/-/g,'').slice(0,12), firstName:fnV.value, lastName:lnV.value,
-      role:roleV.value, email:'', codeHash:hashCodeStrong(code), active:true, createdAt:nowIso(), updatedAt:nowIso(), lastLogin:'' };
+      role:roleV.value, email:emailV.value, codeHash:hashCodeStrong(code), active:true, createdAt:nowIso(), updatedAt:nowIso(), lastLogin:'' };
     users.push(u);
     saveUsers(users);
     const out = publicUser(u); out.code = code;
@@ -4540,7 +4560,7 @@ function doPost(e){
       case 'saveSendCase': return jsonOut(saveSendCase(user, p.payload));
       case 'deleteSendCase': return jsonOut(deleteSendCase(user, p.id));
       case 'listUsers': return jsonOut(listUsers(user));
-      case 'saveUser': return jsonOut(saveUserAction(user, p.id, p.firstName, p.lastName, p.role));
+      case 'saveUser': return jsonOut(saveUserAction(user, p.id, p.firstName, p.lastName, p.role, p.email));
       case 'regenUserCode': return jsonOut(regenUserCode(user, p.id));
       case 'toggleUser': return jsonOut(toggleUser(user, p.id));
       case 'deleteUser': return jsonOut(deleteUser(user, p.id));
@@ -5050,11 +5070,12 @@ async function renderUsers(){
             <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-${rc}Soft text-${rc}">${esc(u.role)}</span>
             ${u.active?'':`<span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-dim text-slate-400">Revoked</span>`}
           </div>
+          <div class="text-[11px] font-medium ${u.email?'text-slate-400':'text-med font-bold'}">${u.email?esc(u.email):'No email — notifications won’t be delivered'}</div>
           <div class="text-[11px] text-slate-400 font-medium">Last login: ${ll}</div>
         </div>
         <div class="hidden sm:block text-[11px] text-slate-400 font-medium w-[100px] shrink-0">${ll}</div>
         <div class="flex items-center gap-1 shrink-0">
-          <button onclick="openEditUser('${u.id}','${esc(u.firstName)}','${esc(u.lastName)}','${esc(u.role)}')" title="Edit" class="w-9 h-9 rounded-full hover:bg-dim text-slate-400 hover:text-brand grid place-items-center transition-colors"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+          <button onclick="openEditUser('${u.id}','${esc(u.firstName)}','${esc(u.lastName)}','${esc(u.role)}','${esc(u.email||'')}')" title="Edit" class="w-9 h-9 rounded-full hover:bg-dim text-slate-400 hover:text-brand grid place-items-center transition-colors"><i data-lucide="pencil" class="w-4 h-4"></i></button>
           <button onclick="adminRegenCode('${u.id}','${full}')" title="New access code" class="w-9 h-9 rounded-full hover:bg-dim text-slate-400 hover:text-brand grid place-items-center transition-colors"><i data-lucide="key-round" class="w-4 h-4"></i></button>
           <button onclick="adminToggle('${u.id}','${full}',${u.active})" title="${u.active?'Revoke access':'Restore access'}" class="w-9 h-9 rounded-full hover:bg-${u.active?'crit':'ok'}Soft text-slate-400 hover:text-${u.active?'crit':'ok'} grid place-items-center transition-colors"><i data-lucide="${u.active?'shield-off':'shield-check'}" class="w-4 h-4"></i></button>
           <button onclick="adminDelete('${u.id}','${full}')" title="Delete permanently" class="w-9 h-9 rounded-full hover:bg-critSoft text-slate-400 hover:text-crit grid place-items-center transition-colors"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
@@ -5073,23 +5094,23 @@ async function renderUsers(){
 
 function openCreateUser(){
   $('userModalTitle').textContent='Create user';
-  $('uFirstName').value=''; $('uLastName').value=''; $('uRole').value='Teacher'; $('uEditId').value='';
+  $('uFirstName').value=''; $('uLastName').value=''; $('uRole').value='Teacher'; $('uEmail').value=''; $('uEditId').value='';
   openModal('userModal'); setTimeout(()=>$('uFirstName').focus(),100); icons();
 }
 
-function openEditUser(id, first, last, role){
+function openEditUser(id, first, last, role, email){
   $('userModalTitle').textContent='Edit user';
-  $('uFirstName').value=first; $('uLastName').value=last; $('uRole').value=role; $('uEditId').value=id;
+  $('uFirstName').value=first; $('uLastName').value=last; $('uRole').value=role; $('uEmail').value=email||''; $('uEditId').value=id;
   openModal('userModal'); setTimeout(()=>$('uFirstName').focus(),100); icons();
 }
 
 async function saveUser(){
-  const first=$('uFirstName').value.trim(), last=$('uLastName').value.trim(), role=$('uRole').value, id=$('uEditId').value;
+  const first=$('uFirstName').value.trim(), last=$('uLastName').value.trim(), role=$('uRole').value, email=$('uEmail').value.trim(), id=$('uEditId').value;
   if(!first||!last){ toast('Enter first and last name','warning'); return; }
   const isEdit=!!id;
   try{
     if(!CAN_USE_APPS_SCRIPT()) throw new Error('Apps Script URL not configured');
-    const data = await scriptCall('saveUser', { id:id||'', firstName:first, lastName:last, role });
+    const data = await scriptCall('saveUser', { id:id||'', firstName:first, lastName:last, role, email });
     if(!data.ok){ toast(data.error||'Failed','error'); return; }
     closeModal('userModal');
     if(!isEdit){ showCodeReveal(`${data.user.firstName} ${data.user.lastName}`, data.user.code, 'Access code created'); }
