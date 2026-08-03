@@ -842,10 +842,15 @@ function deleteCaseAction(caseId, rowId){
   });
 }
 // ── Students (durable per-student metadata — familyId etc.) ────────────────
-// Student name/year/form/keyAdult remain derived from case rows client-side,
-// same as before; this sheet only holds fields with no natural home on a
-// case, so they survive index.html's rebuildStudentsFromCases().
-function studentsHeaders(){ return ['id','familyId','notes','createdAt','updatedAt']; }
+// Student name/year/form/keyAdult are normally derived from case rows
+// client-side (see index.html's rebuildStudentsFromCases()) — this sheet
+// only holds fields with no natural home on a case, so they survive a
+// rebuild. name/year/form were added (appended, not inserted, to keep old
+// rows aligned) so a student can also exist here BEFORE any case is logged
+// for them — that's what importStudentsAction() below populates from an
+// admin's CSV upload, so they show up in the report-a-concern autocomplete
+// right away instead of only after their first concern is logged.
+function studentsHeaders(){ return ['id','familyId','notes','createdAt','updatedAt','name','year','form']; }
 function ensureStudentsSheet(){ return getOrCreateSheet(SHEET_STUDENTS, studentsHeaders()); }
 function loadStudentMetaMap(){
   const sh = ensureStudentsSheet();
@@ -854,13 +859,14 @@ function loadStudentMetaMap(){
   for(let i=1;i<rows.length;i++){
     const r = rows[i];
     if(String(r.join('')).trim()==='') continue;
-    map[r[0]] = { id:r[0], rowId:i+1, familyId:r[1]||'', notes:r[2]||'', createdAt:r[3]||'', updatedAt:r[4]||'' };
+    map[r[0]] = { id:r[0], rowId:i+1, familyId:r[1]||'', notes:r[2]||'', createdAt:r[3]||'', updatedAt:r[4]||'',
+      name:r[5]||'', year:r[6]||'', form:r[7]||'' };
   }
   return map;
 }
 function listStudentMeta(){
   const map = loadStudentMetaMap();
-  return { ok:true, data: Object.keys(map).map(function(k){ const m=map[k]; return { id:m.id, familyId:m.familyId, notes:m.notes }; }) };
+  return { ok:true, data: Object.keys(map).map(function(k){ const m=map[k]; return { id:m.id, familyId:m.familyId, notes:m.notes, name:m.name, year:m.year, form:m.form }; }) };
 }
 function saveStudentMetaAction(sessionUser, studentId, familyId, notes){
   const sid = norm(studentId);
@@ -871,11 +877,49 @@ function saveStudentMetaAction(sessionUser, studentId, familyId, notes){
     const sh = ensureStudentsSheet();
     const map = loadStudentMetaMap();
     const now = nowIso();
+    // Only touches columns 1-5 (id/familyId/notes/createdAt/updatedAt) — a
+    // roster row's name/year/form in columns 6-8 are left exactly as
+    // importStudentsAction() set them.
     const row = [sid, norm(familyId), notesV.value, map[sid] ? map[sid].createdAt : now, now];
     if(map[sid]) sh.getRange(map[sid].rowId,1,1,row.length).setValues([row]);
     else sh.appendRow(row);
     bumpDataVersion();
     return { ok:true };
+  });
+}
+// Admin-only bulk import of a student roster (name/year/form) from a CSV an
+// admin pasted/uploaded client-side (see index.html's importStudentsCSV()).
+// Only creates roster rows for names the client didn't already know about
+// (from a case OR a prior import) — the client does that filtering before
+// calling this, and this re-checks against the roster sheet itself so
+// re-importing the same file twice doesn't create duplicate rows. It can't
+// see students who only exist via a case and were never fetched into the
+// caller's list, so a name collision there is possible in principle; the
+// register view lets an admin spot and merge/delete duplicates manually.
+function importStudentsAction(sessionUser, students){
+  if(!isAdminRole(sessionUser.role)) return { ok:false, error:'You do not have permission to import students' };
+  if(!Array.isArray(students) || !students.length) return { ok:false, error:'No students to import' };
+  if(students.length > 2000) return { ok:false, error:'Import is limited to 2000 students at a time' };
+  return withLock(function(){
+    const sh = ensureStudentsSheet();
+    const map = loadStudentMetaMap();
+    const existingNames = {};
+    Object.keys(map).forEach(function(id){ if(map[id].name) existingNames[normLower(map[id].name)] = true; });
+    const now = nowIso();
+    const rows = [];
+    let skipped = 0;
+    students.forEach(function(s){
+      const nameV = validateString(s && s.name, 1, NAME_MAX_LENGTH);
+      if(!nameV.valid){ skipped++; return; }
+      const key = normLower(nameV.value);
+      if(existingNames[key]){ skipped++; return; }
+      existingNames[key] = true;
+      const id = 's_' + Utilities.getUuid().replace(/-/g,'').slice(0,12);
+      rows.push([id, '', '', now, now, nameV.value, validateString(s.year || '', 0, NAME_MAX_LENGTH).value || '', validateString(s.form || '', 0, NAME_MAX_LENGTH).value || '']);
+    });
+    if(rows.length) sh.getRange(sh.getLastRow()+1, 1, rows.length, studentsHeaders().length).setValues(rows);
+    bumpDataVersion();
+    return { ok:true, added:rows.length, skipped:skipped };
   });
 }
 
@@ -969,6 +1013,7 @@ function doPost(e){
       case 'deleteUser': return jsonOut(deleteUser(user, p.id));
       case 'listStudentMeta': return jsonOut(listStudentMeta());
       case 'saveStudentMeta': return jsonOut(saveStudentMetaAction(user, p.studentId, p.familyId, p.notes));
+      case 'importStudents': return jsonOut(importStudentsAction(user, p.students));
       case 'listFamilies': return jsonOut(listFamilies());
       case 'saveFamily': return jsonOut(saveFamilyAction(user, p.payload));
       case 'deleteFamily': return jsonOut(deleteFamilyAction(user, p.familyId));

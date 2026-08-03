@@ -296,9 +296,36 @@ tailwind.config = {
       <option value="CP">Child Protection plan</option><option value="CIN">Child in Need</option><option value="LAC">Looked-after</option>
       <option value="SEN">SEND</option><option value="YC">Young Carer</option><option value="EAL">EAL</option><option value="PP">Pupil Premium</option>
     </select>
+    <button id="btnImportStudents" onclick="openImportStudentsModal()" class="hidden h-12 px-4 rounded-2xl bg-card border border-line text-sm font-bold text-slate-600 hover:bg-dim flex items-center justify-center gap-2 shrink-0"><i data-lucide="upload" class="w-4 h-4"></i><span class="hidden sm:inline">Import CSV</span></button>
   </div>
   <div id="studentGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
 </section>
+
+<!-- ===================== IMPORT STUDENTS MODAL ===================== -->
+<div id="importStudentsModal" onclick="if(event.target===this)closeModal('importStudentsModal')" class="fixed inset-0 z-[100] hidden bg-ink/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 transition-opacity">
+  <div class="bg-surface w-full sm:max-w-lg sm:rounded-5xl rounded-t-4xl shadow-lift max-h-[92vh] flex flex-col pop">
+    <div class="px-5 sm:px-7 py-4 sm:py-5 flex items-center justify-between border-b border-line bg-card sm:rounded-t-5xl rounded-t-4xl">
+      <div class="flex items-center gap-3"><div class="w-10 h-10 rounded-2xl bg-brandSoft text-onBrandSoft grid place-items-center"><i data-lucide="upload" class="w-5 h-5"></i></div>
+      <div><h3 class="font-display font-bold text-ink">Import student list</h3><p class="text-[11px] text-slate-400 font-medium">Columns: Name, Year, Form/Class</p></div></div>
+      <button onclick="closeModal('importStudentsModal')" class="w-9 h-9 grid place-items-center rounded-full hover:bg-dim text-slate-500"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>
+    <div class="overflow-y-auto scroll-thin px-5 sm:px-7 py-5 space-y-4">
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">CSV file</label>
+        <input id="importStudentsFile" type="file" accept=".csv,text/csv" onchange="handleImportStudentsFile(event)" class="w-full text-sm font-medium">
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Or paste CSV</label>
+        <textarea id="importStudentsCsv" oninput="previewImportStudentsCSV()" rows="8" placeholder="Name,Year,Form&#10;Amelia Turner,Year 4,4B&#10;Noah Bennett,Year 9,9M" class="w-full px-4 py-3 rounded-2xl bg-card border border-line text-sm font-mono resize-y"></textarea>
+      </div>
+      <p id="importStudentsPreview" class="text-xs text-slate-400 font-medium"></p>
+    </div>
+    <div class="px-5 sm:px-7 py-4 border-t border-line bg-card flex items-center justify-end gap-2 sm:rounded-b-5xl">
+      <button onclick="closeModal('importStudentsModal')" class="h-11 px-5 rounded-full text-sm font-bold text-slate-600 hover:bg-dim">Cancel</button>
+      <button onclick="importStudentsCSV()" id="importStudentsBtn" class="h-11 px-6 rounded-full bg-brand hover:bg-brandDark text-white text-sm font-bold shadow-soft">Import</button>
+    </div>
+  </div>
+</div>
 
 <!-- ===================== ACTIONS / TASKS ===================== -->
 <section data-view="tasks" class="hidden fade space-y-4">
@@ -614,7 +641,7 @@ tailwind.config = {
       <div>
         <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Student</label>
         <div class="relative"><i data-lucide="user-search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
-        <input id="rStudent" list="studentList" placeholder="Start typing a name…" class="w-full h-12 pl-11 pr-4 rounded-2xl bg-card border border-line text-sm font-semibold"></div>
+        <input id="rStudent" list="studentList" oninput="onReportStudentInput()" placeholder="Start typing a name…" class="w-full h-12 pl-11 pr-4 rounded-2xl bg-card border border-line text-sm font-semibold"></div>
         <datalist id="studentList"></datalist>
         <p class="text-[11px] text-slate-400 mt-1.5 font-medium">New name? It will be added to the register automatically.</p>
       </div>
@@ -728,15 +755,10 @@ tailwind.config = {
           <div>
             <div class="flex items-center justify-between mb-2">
               <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Meeting minutes</h4>
-              <button onclick="printCaseMeetings()" class="text-xs font-bold text-brand hover:text-brandDark flex items-center gap-1"><i data-lucide="printer" class="w-3.5 h-3.5"></i>Print</button>
+              <span id="caseMeetingsCount" class="text-[11px] font-bold text-slate-400"></span>
             </div>
             <p class="text-[11px] text-slate-400 font-medium mb-2">A separate record for this case — kept apart from the chronology above.</p>
-            <div id="caseMeetings" class="space-y-2"></div>
-            <div class="mt-3 bg-card rounded-2xl border border-line p-3 space-y-2">
-              <input id="caseMeetingTitle" placeholder="Meeting title (e.g. Annual review, TAC meeting)…" class="w-full h-10 px-3 rounded-xl bg-dim border border-transparent text-sm font-medium">
-              <textarea id="caseMeetingMinutes" rows="3" placeholder="Minutes / notes from the meeting…" class="w-full px-3 py-2 rounded-xl bg-dim border border-transparent text-sm font-medium resize-none"></textarea>
-              <div class="flex justify-end"><button onclick="addCaseMeeting()" class="h-9 px-4 rounded-full bg-brand hover:bg-brandDark text-white text-xs font-bold">Log meeting minutes</button></div>
-            </div>
+            <button onclick="openCaseMeetingsModal()" class="w-full h-11 px-4 rounded-2xl border-2 border-dashed border-line bg-card hover:border-brand/40 hover:bg-dim/40 text-sm font-bold text-slate-600 flex items-center justify-center gap-2 transition-colors"><i data-lucide="notebook-pen" class="w-4 h-4 text-brand"></i>Open meeting minutes</button>
           </div>
         </div>
         <div class="lg:col-span-2 p-5 sm:p-7 bg-card border-t lg:border-t-0 lg:border-l border-line space-y-5">
@@ -775,6 +797,31 @@ tailwind.config = {
           <button onclick="printCase()" class="w-full h-10 rounded-full border-2 border-line text-xs font-bold text-slate-600 hover:border-brand/40 hover:text-brand flex items-center justify-center gap-1.5"><i data-lucide="printer" class="w-3.5 h-3.5"></i>Print case summary</button>
           <button onclick="deleteCase()" class="w-full h-10 rounded-full text-xs font-bold text-crit hover:bg-critSoft flex items-center justify-center gap-1.5"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i>Delete concern</button>
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== MEETING MINUTES MODAL ===================== -->
+<div id="caseMeetingsModal" onclick="if(event.target===this)closeModal('caseMeetingsModal')" class="fixed inset-0 z-[110] hidden bg-ink/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 transition-opacity">
+  <div class="bg-surface w-full sm:max-w-3xl sm:rounded-5xl rounded-t-4xl shadow-lift max-h-[94vh] sm:max-h-[90vh] flex flex-col pop">
+    <div class="px-5 sm:px-7 py-4 sm:py-5 flex items-center justify-between border-b border-line bg-card sm:rounded-t-5xl rounded-t-4xl">
+      <div class="flex items-center gap-3"><div class="w-10 h-10 rounded-2xl bg-brandSoft text-onBrandSoft grid place-items-center"><i data-lucide="notebook-pen" class="w-5 h-5"></i></div>
+      <div><h3 class="font-display font-bold text-ink">Meeting minutes</h3><p id="caseMeetingsModalSub" class="text-[11px] text-slate-400 font-medium">A separate record for this case — kept apart from the chronology</p></div></div>
+      <div class="flex items-center gap-1">
+        <button onclick="printCaseMeetings()" title="Print" class="w-9 h-9 grid place-items-center rounded-full hover:bg-dim text-slate-500"><i data-lucide="printer" class="w-4 h-4"></i></button>
+        <button onclick="closeModal('caseMeetingsModal')" class="w-9 h-9 grid place-items-center rounded-full hover:bg-dim text-slate-500"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+    </div>
+    <div class="overflow-y-auto scroll-thin px-5 sm:px-7 py-5 space-y-4 flex-1">
+      <div class="bg-card rounded-2xl border border-line p-4 space-y-3">
+        <input id="caseMeetingTitle" placeholder="Meeting title (e.g. Annual review, TAC meeting)…" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-medium">
+        <textarea id="caseMeetingMinutes" rows="12" placeholder="Minutes / notes from the meeting…" class="w-full px-4 py-3 rounded-xl bg-dim border border-transparent text-sm font-medium resize-y"></textarea>
+        <div class="flex justify-end"><button onclick="addCaseMeeting()" class="h-10 px-5 rounded-full bg-brand hover:bg-brandDark text-white text-sm font-bold">Log meeting minutes</button></div>
+      </div>
+      <div>
+        <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Previous entries</h4>
+        <div id="caseMeetings" class="space-y-2"></div>
       </div>
     </div>
   </div>
@@ -1561,7 +1608,7 @@ function safeDate(v){
 // against it before doing a full re-fetch, so repeated navigation/boot don't
 // re-download unchanged data — only an actual change on the server does.
 let DATA_VERSION = 0;
-let STUDENT_META = {}; // studentId -> { familyId, notes } — see saveStudentMeta / Work Item 5
+let STUDENT_META = {}; // studentId -> { familyId, notes, name, year, form } — see saveStudentMeta/importStudentsAction
 let FAMILIES = []; // { familyId, familyName, studentIds[], notes } — see loadFamilies / Work Item 5
 
 async function syncData(){
@@ -1622,6 +1669,13 @@ async function checkForUpdatesAndSync(){
 function rebuildStudentsFromCases(){
   const map={};
   DB.cases.forEach(c=>{ if(!map[c.studentId]) map[c.studentId]={id:c.studentId,name:c.studentName,year:c.year,form:'',keyAdult:c.assignee||'',flags:[]}; });
+  // Students imported via CSV (see importStudentsCSV()) but with no case
+  // logged yet only exist in STUDENT_META — merge those in too, so they show
+  // up in the report-a-concern autocomplete before their first concern.
+  Object.keys(STUDENT_META).forEach(id=>{
+    const m = STUDENT_META[id];
+    if(m.name && !map[id]) map[id] = { id, name:m.name, year:m.year||'Unknown', form:m.form||'—', keyAdult:'', flags:[] };
+  });
   DB.students=Object.values(map);
   applyStudentMeta();
 }
@@ -1643,7 +1697,9 @@ async function loadStudentMeta(){
     if(res && res.ok){
       STUDENT_META = {};
       (res.data||[]).forEach(m=>{ STUDENT_META[m.id] = m; });
-      applyStudentMeta();
+      // Full rebuild (not just applyStudentMeta()) so roster-only students
+      // (imported via CSV, no case yet) get merged into DB.students too.
+      rebuildStudentsFromCases();
     }
   }catch(e){ /* non-fatal — family grouping just won't show until next sync */ }
 }
@@ -1826,6 +1882,7 @@ function renderStudents(){
   const q=($('stuSearch')?.value||'').toLowerCase();
   const flag=$('stuFlag')?.value||'All';
   const isDSL = IS_ADMIN();
+  $('btnImportStudents')?.classList.toggle('hidden', !IS_USER_MANAGER());
   let full=DB.students.filter(s=>{
     if(q && !`${s.name} ${s.form} ${s.year}`.toLowerCase().includes(q)) return false;
     if(flag==='risk'){ if(!casesForStudent(s.id).some(isOpen)) return false; }
@@ -1859,6 +1916,65 @@ function renderStudents(){
     </button>`;
   }).join('') || emptyState('users-round','No students found','Try a different filter.')) + loadMoreControl(remaining, 'loadMoreStudents()');
   icons();
+}
+
+// ---------- STUDENT CSV IMPORT (admin) ----------
+function openImportStudentsModal(){
+  if(!IS_USER_MANAGER()) return;
+  $('importStudentsFile').value=''; $('importStudentsCsv').value=''; $('importStudentsPreview').textContent='';
+  openModal('importStudentsModal'); icons();
+}
+function handleImportStudentsFile(e){
+  const file = e.target.files && e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{ $('importStudentsCsv').value = String(reader.result||''); previewImportStudentsCSV(); };
+  reader.readAsText(file);
+}
+// Minimal CSV split — no quoted-field/embedded-comma support, which matches
+// downloadCSV()'s own writer (see exportCSV()) and is enough for a simple
+// Name,Year,Form roster a school office would export from a spreadsheet.
+function parseStudentsCSV(text){
+  const lines = String(text||'').split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  if(!lines.length) return [];
+  let start = 0;
+  if(/^"?name"?\s*,/i.test(lines[0])) start = 1; // skip an optional header row
+  const out = [];
+  for(let i=start;i<lines.length;i++){
+    const cells = lines[i].split(',').map(c=>c.trim().replace(/^"|"$/g,''));
+    const name = cells[0];
+    if(!name) continue;
+    out.push({ name, year: cells[1]||'', form: cells[2]||'' });
+  }
+  return out;
+}
+function previewImportStudentsCSV(){
+  const rows = parseStudentsCSV($('importStudentsCsv').value);
+  if(!rows.length){ $('importStudentsPreview').textContent=''; return; }
+  const existing = new Set(DB.students.map(s=>s.name.toLowerCase()));
+  const newCount = rows.filter(r=>!existing.has(r.name.toLowerCase())).length;
+  $('importStudentsPreview').textContent = `${rows.length} row${rows.length!==1?'s':''} found — ${newCount} new, ${rows.length-newCount} already on the register.`;
+}
+async function importStudentsCSV(){
+  if(!IS_USER_MANAGER()) return;
+  const rows = parseStudentsCSV($('importStudentsCsv').value);
+  if(!rows.length){ toast('Paste or choose a CSV file first','warning'); return; }
+  const existing = new Set(DB.students.map(s=>s.name.toLowerCase()));
+  const newRows = rows.filter(r=>!existing.has(r.name.toLowerCase()));
+  if(!newRows.length){ toast('All students in that file are already on the register','warning'); return; }
+  const btn=$('importStudentsBtn'); const orig=btn.innerHTML;
+  btn.disabled=true; btn.innerHTML='<i data-lucide="loader-circle" class="w-4 h-4 animate-spin"></i>Importing…'; icons();
+  try{
+    if(!CAN_USE_APPS_SCRIPT()) throw new Error('Apps Script URL not configured');
+    const data = await scriptCall('importStudents', { students:newRows });
+    if(!data.ok){ toast(data.error||'Import failed','error'); return; }
+    logAudit('Students imported', `${data.added} added${data.skipped?`, ${data.skipped} skipped`:''}`);
+    await loadStudentMeta();
+    persist(); renderAll();
+    closeModal('importStudentsModal');
+    toast(`Imported ${data.added} student${data.added===1?'':'s'}${data.skipped?` — ${data.skipped} already existed`:''}`);
+  }catch(e){ toast('Server not reachable','error'); }
+  finally{ btn.disabled=false; btn.innerHTML=orig; icons(); }
 }
 
 // ---------- TASKS ----------
@@ -1946,6 +2062,16 @@ function populateSelects(){
 }
 
 // ---------- REPORT a concern ----------
+// Fills the Class field once the typed name exactly matches a known student
+// (from a prior case or an admin's CSV import — see importStudentsCSV()).
+// Only fills, never clears, so it doesn't fight a manually-typed class while
+// the name is still mid-autocomplete.
+function onReportStudentInput(){
+  const name = $('rStudent').value.trim().toLowerCase();
+  if(!name) return;
+  const s = DB.students.find(x=>x.name.toLowerCase()===name);
+  if(s && s.form && s.form!=='—') $('rClass').value = s.form;
+}
 function openReport(prefillName){
   reportBodyMap=[];
   $('rStudent').value=prefillName||''; $('rCategory').value=''; $('rDesc').value='';
@@ -2368,9 +2494,19 @@ function addCaseNote(){ const t=$('caseNote').value.trim(); if(!t) return; const
 // out of the chronology/timeline (and so out of the per-student Full
 // Chronology aggregation too) since the user asked for these to be
 // distinct records, not chronology entries. ----------
+function openCaseMeetingsModal(){
+  const c = DB.cases.find(x=>x.id===activeCaseId); if(!c) return;
+  renderCaseMeetings(c);
+  $('caseMeetingTitle').value=''; $('caseMeetingMinutes').value='';
+  openModal('caseMeetingsModal'); setTimeout(()=>$('caseMeetingTitle')?.focus(),100); icons();
+}
 function renderCaseMeetings(c){
   const el = $('caseMeetings'); if(!el) return;
   const meetings = c.meetings || [];
+  const countEl = $('caseMeetingsCount');
+  if(countEl) countEl.textContent = meetings.length ? `${meetings.length} logged` : '';
+  const subEl = $('caseMeetingsModalSub');
+  if(subEl) subEl.textContent = `${esc(c.studentName)} — kept apart from the chronology`;
   el.innerHTML = meetings.length ? meetings.map(m=>`
     <div class="bg-card rounded-2xl border border-line p-3">
       <div class="flex items-center justify-between gap-2 mb-1">
@@ -4439,10 +4575,15 @@ function deleteCaseAction(caseId, rowId){
   });
 }
 // ── Students (durable per-student metadata — familyId etc.) ────────────────
-// Student name/year/form/keyAdult remain derived from case rows client-side,
-// same as before; this sheet only holds fields with no natural home on a
-// case, so they survive index.html's rebuildStudentsFromCases().
-function studentsHeaders(){ return ['id','familyId','notes','createdAt','updatedAt']; }
+// Student name/year/form/keyAdult are normally derived from case rows
+// client-side (see index.html's rebuildStudentsFromCases()) — this sheet
+// only holds fields with no natural home on a case, so they survive a
+// rebuild. name/year/form were added (appended, not inserted, to keep old
+// rows aligned) so a student can also exist here BEFORE any case is logged
+// for them — that's what importStudentsAction() below populates from an
+// admin's CSV upload, so they show up in the report-a-concern autocomplete
+// right away instead of only after their first concern is logged.
+function studentsHeaders(){ return ['id','familyId','notes','createdAt','updatedAt','name','year','form']; }
 function ensureStudentsSheet(){ return getOrCreateSheet(SHEET_STUDENTS, studentsHeaders()); }
 function loadStudentMetaMap(){
   const sh = ensureStudentsSheet();
@@ -4451,13 +4592,14 @@ function loadStudentMetaMap(){
   for(let i=1;i<rows.length;i++){
     const r = rows[i];
     if(String(r.join('')).trim()==='') continue;
-    map[r[0]] = { id:r[0], rowId:i+1, familyId:r[1]||'', notes:r[2]||'', createdAt:r[3]||'', updatedAt:r[4]||'' };
+    map[r[0]] = { id:r[0], rowId:i+1, familyId:r[1]||'', notes:r[2]||'', createdAt:r[3]||'', updatedAt:r[4]||'',
+      name:r[5]||'', year:r[6]||'', form:r[7]||'' };
   }
   return map;
 }
 function listStudentMeta(){
   const map = loadStudentMetaMap();
-  return { ok:true, data: Object.keys(map).map(function(k){ const m=map[k]; return { id:m.id, familyId:m.familyId, notes:m.notes }; }) };
+  return { ok:true, data: Object.keys(map).map(function(k){ const m=map[k]; return { id:m.id, familyId:m.familyId, notes:m.notes, name:m.name, year:m.year, form:m.form }; }) };
 }
 function saveStudentMetaAction(sessionUser, studentId, familyId, notes){
   const sid = norm(studentId);
@@ -4468,11 +4610,49 @@ function saveStudentMetaAction(sessionUser, studentId, familyId, notes){
     const sh = ensureStudentsSheet();
     const map = loadStudentMetaMap();
     const now = nowIso();
+    // Only touches columns 1-5 (id/familyId/notes/createdAt/updatedAt) — a
+    // roster row's name/year/form in columns 6-8 are left exactly as
+    // importStudentsAction() set them.
     const row = [sid, norm(familyId), notesV.value, map[sid] ? map[sid].createdAt : now, now];
     if(map[sid]) sh.getRange(map[sid].rowId,1,1,row.length).setValues([row]);
     else sh.appendRow(row);
     bumpDataVersion();
     return { ok:true };
+  });
+}
+// Admin-only bulk import of a student roster (name/year/form) from a CSV an
+// admin pasted/uploaded client-side (see index.html's importStudentsCSV()).
+// Only creates roster rows for names the client didn't already know about
+// (from a case OR a prior import) — the client does that filtering before
+// calling this, and this re-checks against the roster sheet itself so
+// re-importing the same file twice doesn't create duplicate rows. It can't
+// see students who only exist via a case and were never fetched into the
+// caller's list, so a name collision there is possible in principle; the
+// register view lets an admin spot and merge/delete duplicates manually.
+function importStudentsAction(sessionUser, students){
+  if(!isAdminRole(sessionUser.role)) return { ok:false, error:'You do not have permission to import students' };
+  if(!Array.isArray(students) || !students.length) return { ok:false, error:'No students to import' };
+  if(students.length > 2000) return { ok:false, error:'Import is limited to 2000 students at a time' };
+  return withLock(function(){
+    const sh = ensureStudentsSheet();
+    const map = loadStudentMetaMap();
+    const existingNames = {};
+    Object.keys(map).forEach(function(id){ if(map[id].name) existingNames[normLower(map[id].name)] = true; });
+    const now = nowIso();
+    const rows = [];
+    let skipped = 0;
+    students.forEach(function(s){
+      const nameV = validateString(s && s.name, 1, NAME_MAX_LENGTH);
+      if(!nameV.valid){ skipped++; return; }
+      const key = normLower(nameV.value);
+      if(existingNames[key]){ skipped++; return; }
+      existingNames[key] = true;
+      const id = 's_' + Utilities.getUuid().replace(/-/g,'').slice(0,12);
+      rows.push([id, '', '', now, now, nameV.value, validateString(s.year || '', 0, NAME_MAX_LENGTH).value || '', validateString(s.form || '', 0, NAME_MAX_LENGTH).value || '']);
+    });
+    if(rows.length) sh.getRange(sh.getLastRow()+1, 1, rows.length, studentsHeaders().length).setValues(rows);
+    bumpDataVersion();
+    return { ok:true, added:rows.length, skipped:skipped };
   });
 }
 
@@ -4566,6 +4746,7 @@ function doPost(e){
       case 'deleteUser': return jsonOut(deleteUser(user, p.id));
       case 'listStudentMeta': return jsonOut(listStudentMeta());
       case 'saveStudentMeta': return jsonOut(saveStudentMetaAction(user, p.studentId, p.familyId, p.notes));
+      case 'importStudents': return jsonOut(importStudentsAction(user, p.students));
       case 'listFamilies': return jsonOut(listFamilies());
       case 'saveFamily': return jsonOut(saveFamilyAction(user, p.payload));
       case 'deleteFamily': return jsonOut(deleteFamilyAction(user, p.familyId));
