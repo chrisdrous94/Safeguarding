@@ -841,6 +841,39 @@ function deleteCaseAction(caseId, rowId){
     return { ok:true, status:'success' };
   });
 }
+
+// ── Meeting-minute attachments (Drive-backed) ───────────────────────────────
+// Files are stored in a single shared Drive folder with link-sharing on
+// (anyone with the link can view) — a deliberate simplicity-over-
+// confidentiality tradeoff: unlike everything else in this API, an
+// attachment's URL works without an app session. The returned attachment
+// metadata is folded into the meeting entry client-side and persisted via
+// the normal syncCase — this action never touches the cases sheet itself.
+const MEETING_ATTACHMENTS_FOLDER = 'Safeguarding — Meeting minute attachments';
+const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024; // conservative — the file travels as base64 JSON in the POST body
+const ALLOWED_ATTACHMENT_MIME = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+function ensureMeetingAttachmentsFolder(){
+  const existing = DriveApp.getFoldersByName(MEETING_ATTACHMENTS_FOLDER);
+  if(existing.hasNext()) return existing.next();
+  return DriveApp.createFolder(MEETING_ATTACHMENTS_FOLDER);
+}
+function uploadMeetingAttachment(sessionUser, fileName, mimeType, base64Data){
+  const nameV = validateString(fileName, 1, 200);
+  if(!nameV.valid) return { ok:false, error:'File name: ' + nameV.error };
+  if(ALLOWED_ATTACHMENT_MIME.indexOf(mimeType) < 0) return { ok:false, error:'Only PDF and Word documents can be attached' };
+  let bytes;
+  try { bytes = Utilities.base64Decode(base64Data); } catch(e){ return { ok:false, error:'Could not read file data' }; }
+  if(!bytes || !bytes.length) return { ok:false, error:'File is empty' };
+  if(bytes.length > ATTACHMENT_MAX_BYTES) return { ok:false, error:'File is too large — the limit is 10MB' };
+  try{
+    const blob = Utilities.newBlob(bytes, mimeType, nameV.value);
+    const file = ensureMeetingAttachmentsFolder().createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return { ok:true, attachment:{ id:file.getId(), name:nameV.value, url:file.getUrl(), mimeType:mimeType,
+      size:bytes.length, uploadedAt:nowIso(), uploadedBy: norm((sessionUser.firstName||'')+' '+(sessionUser.lastName||'')) } };
+  }catch(e){ return { ok:false, error:'Could not upload file: ' + String(e) }; }
+}
+
 // ── Students (durable per-student metadata — familyId etc.) ────────────────
 // Student name/year/form/keyAdult are normally derived from case rows
 // client-side (see index.html's rebuildStudentsFromCases()) — this sheet
@@ -999,6 +1032,7 @@ function doPost(e){
       case 'syncCase': return jsonOut(upsertCaseRecord(p.payload));
       case 'updateStatus': return jsonOut(updateCaseStatus(p.rowId, p.caseId, p.status));
       case 'deleteCase': return jsonOut(deleteCaseAction(p.caseId, p.rowId));
+      case 'uploadMeetingAttachment': return jsonOut(uploadMeetingAttachment(user, p.fileName, p.mimeType, p.data));
       case 'notifyAssignee': return jsonOut(notifyAssignee(p.assignee, p.caseId, p.studentName, p.category, p.notifier));
       case 'notifyActionOwner': return jsonOut(notifyActionOwner(p.owner, p.caseId, p.studentName, p.actionText, p.notifier));
       case 'getSendReport': return jsonOut(getSendReport(user, p.period));

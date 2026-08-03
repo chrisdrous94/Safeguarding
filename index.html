@@ -817,7 +817,14 @@ tailwind.config = {
       <div class="bg-card rounded-2xl border border-line p-4 space-y-3">
         <input id="caseMeetingTitle" placeholder="Meeting title (e.g. Annual review, TAC meeting)…" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-medium">
         <textarea id="caseMeetingMinutes" rows="12" placeholder="Minutes / notes from the meeting…" class="w-full px-4 py-3 rounded-xl bg-dim border border-transparent text-sm font-medium resize-y"></textarea>
-        <div class="flex justify-end"><button onclick="addCaseMeeting()" class="h-10 px-5 rounded-full bg-brand hover:bg-brandDark text-white text-sm font-bold">Log meeting minutes</button></div>
+        <div>
+          <label class="flex items-center gap-2 text-xs font-bold text-slate-500 cursor-pointer w-fit">
+            <i data-lucide="paperclip" class="w-3.5 h-3.5"></i>Attach PDF or Word document(s)
+            <input id="caseMeetingFiles" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple class="hidden" onchange="onCaseMeetingFilesChange()">
+          </label>
+          <p id="caseMeetingFilesList" class="text-[11px] text-slate-400 font-medium mt-1"></p>
+        </div>
+        <div class="flex justify-end"><button onclick="addCaseMeeting()" id="addCaseMeetingBtn" class="h-10 px-5 rounded-full bg-brand hover:bg-brandDark text-white text-sm font-bold">Log meeting minutes</button></div>
       </div>
       <div>
         <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Previous entries</h4>
@@ -1177,6 +1184,14 @@ const AGENCIES = {
 // see/action the case (see visibleCases()/renderStudents()'s ME.role checks)
 // and everyone active in that role is emailed (see notifyAssignee server-side).
 const ASSIGNABLE_ROLES = ['Teacher', 'SENDCO', 'Pastoral Lead', 'Deputy DSL', 'Head of Primary', 'Head of Secondary', 'Head of Extra', 'Lead DSL', 'Principal'];
+
+// Meeting-minute attachments (see addCaseMeeting()) — kept in sync with
+// apps-script-db.gs's ALLOWED_ATTACHMENT_MIME/ATTACHMENT_MAX_BYTES. Uploaded
+// files are stored in a Drive folder with link-sharing on (anyone with the
+// link can view, no app login required) — a deliberate simplicity-over-
+// confidentiality tradeoff for this feature specifically.
+const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+const ALLOWED_ATTACHMENT_MIME = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
 
 const STRATEGY_GROUPS = [
   { title:'Classroom Environment', items:[
@@ -2497,8 +2512,28 @@ function addCaseNote(){ const t=$('caseNote').value.trim(); if(!t) return; const
 function openCaseMeetingsModal(){
   const c = DB.cases.find(x=>x.id===activeCaseId); if(!c) return;
   renderCaseMeetings(c);
-  $('caseMeetingTitle').value=''; $('caseMeetingMinutes').value='';
+  $('caseMeetingTitle').value=''; $('caseMeetingMinutes').value=''; $('caseMeetingFiles').value=''; $('caseMeetingFilesList').textContent='';
   openModal('caseMeetingsModal'); setTimeout(()=>$('caseMeetingTitle')?.focus(),100); icons();
+}
+function attachmentIcon(mimeType){ return mimeType==='application/pdf' ? 'file-text' : 'file'; }
+function fmtBytes(n){ n=Number(n)||0; return n<1024*1024 ? Math.round(n/1024)+' KB' : (n/1024/1024).toFixed(1)+' MB'; }
+function onCaseMeetingFilesChange(){
+  const files = Array.from($('caseMeetingFiles').files||[]);
+  const bad = files.find(f=> ALLOWED_ATTACHMENT_MIME.indexOf(f.type)<0 || f.size>ATTACHMENT_MAX_BYTES);
+  if(bad){
+    toast(ALLOWED_ATTACHMENT_MIME.indexOf(bad.type)<0 ? 'Only PDF and Word documents can be attached' : `"${bad.name}" is over the 10MB limit`, 'warning');
+    $('caseMeetingFiles').value=''; $('caseMeetingFilesList').textContent='';
+    return;
+  }
+  $('caseMeetingFilesList').textContent = files.length ? `${files.length} file${files.length!==1?'s':''} selected: ${files.map(f=>f.name).join(', ')}` : '';
+}
+function readFileAsBase64(file){
+  return new Promise((resolve,reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=> resolve(String(reader.result||'').split(',')[1]||'');
+    reader.onerror = ()=> reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 }
 function renderCaseMeetings(c){
   const el = $('caseMeetings'); if(!el) return;
@@ -2515,20 +2550,40 @@ function renderCaseMeetings(c){
       </div>
       <div class="text-[11px] font-semibold text-slate-400 mb-1.5">${fmtDate(m.time)} ${fmtTime(m.time)} · ${esc(m.author)}</div>
       <p class="text-xs text-slate-600 font-medium whitespace-pre-wrap">${esc(m.text)}</p>
+      ${(m.attachments&&m.attachments.length) ? `<div class="flex flex-wrap gap-1.5 mt-2">${m.attachments.map(a=>`
+        <a href="${esc(a.url)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-1 rounded-lg bg-dim text-slate-600 hover:bg-line"><i data-lucide="${attachmentIcon(a.mimeType)}" class="w-3.5 h-3.5"></i>${esc(a.name)}<span class="text-slate-400 font-medium">${fmtBytes(a.size)}</span></a>`).join('')}</div>` : ''}
     </div>`).join('') : '<p class="text-xs text-slate-400 font-medium italic">No meeting minutes logged yet.</p>';
   icons();
 }
-function addCaseMeeting(){
+async function addCaseMeeting(){
   const title = $('caseMeetingTitle').value.trim();
   const text = $('caseMeetingMinutes').value.trim();
-  if(!text){ toast('Add the meeting minutes text','warning'); return; }
+  const files = Array.from($('caseMeetingFiles').files||[]);
+  if(!text && !files.length){ toast('Add the meeting minutes text or attach a file','warning'); return; }
   const c = DB.cases.find(x=>x.id===activeCaseId); if(!c) return;
+
+  const btn = $('addCaseMeetingBtn'); const orig = btn.innerHTML;
+  let attachments = [];
+  if(files.length){
+    if(!CAN_USE_APPS_SCRIPT()){ toast('Attachments need a live Apps Script connection — check Settings','error'); return; }
+    btn.disabled=true; btn.innerHTML='<i data-lucide="loader-circle" class="w-4 h-4 animate-spin"></i>Uploading…'; icons();
+    try{
+      for(const f of files){
+        const data = await readFileAsBase64(f);
+        const res = await scriptCall('uploadMeetingAttachment', { fileName:f.name, mimeType:f.type, data });
+        if(!res.ok){ toast(res.error||`Could not upload "${f.name}"`,'error'); btn.disabled=false; btn.innerHTML=orig; icons(); return; }
+        attachments.push(res.attachment);
+      }
+    }catch(e){ toast('Could not upload attachment(s) — check your connection','error'); btn.disabled=false; btn.innerHTML=orig; icons(); return; }
+  }
+
   c.meetings = c.meetings || [];
-  c.meetings.unshift({ id:uid('mt_'), time:new Date().toISOString(), author:ME.name, title:title||'Meeting', text });
-  $('caseMeetingTitle').value=''; $('caseMeetingMinutes').value='';
+  c.meetings.unshift({ id:uid('mt_'), time:new Date().toISOString(), author:ME.name, title:title||'Meeting', text, attachments });
+  $('caseMeetingTitle').value=''; $('caseMeetingMinutes').value=''; $('caseMeetingFiles').value=''; $('caseMeetingFilesList').textContent='';
   logAudit('Meeting minutes logged', c.studentName);
   if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
   persist(); renderCaseMeetings(c); toast('Meeting minutes logged');
+  btn.disabled=false; btn.innerHTML=orig; icons();
 }
 function deleteCaseMeeting(id){
   const c = DB.cases.find(x=>x.id===activeCaseId); if(!c) return;
@@ -2712,6 +2767,7 @@ function printCaseMeetings(){
       <h3>${esc(m.title||'Meeting')}</h3>
       <div class="meta">${fmtDate(m.time)} ${fmtTime(m.time)} · ${esc(m.author)}</div>
       <p>${esc(m.text).replace(/\n/g,'<br>')}</p>
+      ${(m.attachments&&m.attachments.length) ? `<p class="attachments">Attachments: ${m.attachments.map(a=>`<a href="${esc(a.url)}">${esc(a.name)}</a>`).join(', ')}</p>` : ''}
     </div>`).join('');
   const html = `<!doctype html><html><head><title>Meeting minutes - ${esc(c.studentName)}</title>
     <style>
@@ -2722,6 +2778,7 @@ function printCaseMeetings(){
       .entry h3{margin:0 0 4px 0;font-size:14px;color:#0a5b53}
       .entry .meta{margin:0 0 8px 0}
       .entry p{margin:0;font-size:12px;white-space:pre-wrap}
+      .entry p.attachments{margin-top:8px;font-size:11px;color:#0d7a6f}
       .footer{margin-top:24px;padding-top:12px;border-top:1px solid #ddd;color:#666;font-size:11px}
     </style></head><body>
     <h1>Meeting minutes — ${esc(c.studentName)}</h1>
@@ -2750,6 +2807,7 @@ function printCase(){
       <h3>${esc(m.title||'Meeting')}</h3>
       <div class="meta">${fmtDate(m.time)} ${fmtTime(m.time)} · ${esc(m.author)}</div>
       <p>${esc(m.text).replace(/\n/g,'<br>')}</p>
+      ${(m.attachments&&m.attachments.length) ? `<p style="margin-top:6px;font-size:11px;color:#0d7a6f">Attachments: ${m.attachments.map(a=>`<a href="${esc(a.url)}">${esc(a.name)}</a>`).join(', ')}</p>` : ''}
     </div>`).join('');
   const html = `<!doctype html><html><head><title>Case summary - ${esc(c.studentName)}</title>
     <style>
@@ -4574,6 +4632,39 @@ function deleteCaseAction(caseId, rowId){
     return { ok:true, status:'success' };
   });
 }
+
+// ── Meeting-minute attachments (Drive-backed) ───────────────────────────────
+// Files are stored in a single shared Drive folder with link-sharing on
+// (anyone with the link can view) — a deliberate simplicity-over-
+// confidentiality tradeoff: unlike everything else in this API, an
+// attachment's URL works without an app session. The returned attachment
+// metadata is folded into the meeting entry client-side and persisted via
+// the normal syncCase — this action never touches the cases sheet itself.
+const MEETING_ATTACHMENTS_FOLDER = 'Safeguarding — Meeting minute attachments';
+const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024; // conservative — the file travels as base64 JSON in the POST body
+const ALLOWED_ATTACHMENT_MIME = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+function ensureMeetingAttachmentsFolder(){
+  const existing = DriveApp.getFoldersByName(MEETING_ATTACHMENTS_FOLDER);
+  if(existing.hasNext()) return existing.next();
+  return DriveApp.createFolder(MEETING_ATTACHMENTS_FOLDER);
+}
+function uploadMeetingAttachment(sessionUser, fileName, mimeType, base64Data){
+  const nameV = validateString(fileName, 1, 200);
+  if(!nameV.valid) return { ok:false, error:'File name: ' + nameV.error };
+  if(ALLOWED_ATTACHMENT_MIME.indexOf(mimeType) < 0) return { ok:false, error:'Only PDF and Word documents can be attached' };
+  let bytes;
+  try { bytes = Utilities.base64Decode(base64Data); } catch(e){ return { ok:false, error:'Could not read file data' }; }
+  if(!bytes || !bytes.length) return { ok:false, error:'File is empty' };
+  if(bytes.length > ATTACHMENT_MAX_BYTES) return { ok:false, error:'File is too large — the limit is 10MB' };
+  try{
+    const blob = Utilities.newBlob(bytes, mimeType, nameV.value);
+    const file = ensureMeetingAttachmentsFolder().createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return { ok:true, attachment:{ id:file.getId(), name:nameV.value, url:file.getUrl(), mimeType:mimeType,
+      size:bytes.length, uploadedAt:nowIso(), uploadedBy: norm((sessionUser.firstName||'')+' '+(sessionUser.lastName||'')) } };
+  }catch(e){ return { ok:false, error:'Could not upload file: ' + String(e) }; }
+}
+
 // ── Students (durable per-student metadata — familyId etc.) ────────────────
 // Student name/year/form/keyAdult are normally derived from case rows
 // client-side (see index.html's rebuildStudentsFromCases()) — this sheet
@@ -4732,6 +4823,7 @@ function doPost(e){
       case 'syncCase': return jsonOut(upsertCaseRecord(p.payload));
       case 'updateStatus': return jsonOut(updateCaseStatus(p.rowId, p.caseId, p.status));
       case 'deleteCase': return jsonOut(deleteCaseAction(p.caseId, p.rowId));
+      case 'uploadMeetingAttachment': return jsonOut(uploadMeetingAttachment(user, p.fileName, p.mimeType, p.data));
       case 'notifyAssignee': return jsonOut(notifyAssignee(p.assignee, p.caseId, p.studentName, p.category, p.notifier));
       case 'notifyActionOwner': return jsonOut(notifyActionOwner(p.owner, p.caseId, p.studentName, p.actionText, p.notifier));
       case 'getSendReport': return jsonOut(getSendReport(user, p.period));
