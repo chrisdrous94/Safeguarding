@@ -571,8 +571,11 @@ function deleteUser(sessionUser, id){
 // Cases are assigned to a role, not an individual (see index.html's
 // ASSIGNABLE_ROLES / renderCaseAssignee) — so everyone active in that role
 // gets notified, not a single named user.
+function usersInRoles(roles){
+  return loadUsers().filter(function(u){ return u.active && u.email && roles.indexOf(u.role) >= 0; });
+}
 function notifyAssignee(role, caseId, studentName, category, notifier){
-  const users = loadUsers().filter(function(u){ return u.active && u.role===role && u.email; });
+  const users = usersInRoles([role]);
   users.forEach(function(u){
     try {
       MailApp.sendEmail({ to:u.email, subject:'[Safeguarding] A case has been assigned to your role (' + role + '): ' + studentName,
@@ -594,6 +597,47 @@ function notifyActionOwner(owner, caseId, studentName, actionText, notifier){
         + 'Please log in to review and complete this action.\n\nThis is an automated notification. Do not reply to this email.' });
   } catch(err) { /* best-effort notification */ }
   return { ok:true };
+}
+// Lead DSL/Deputy DSL/Principal always see every new concern immediately;
+// the phase head for the student's department also gets it, using the same
+// Secondary-vs-everything-else split as index.html's caseInPhase().
+function relevantRolesForDepartment(department){
+  return ['Lead DSL', 'Deputy DSL', 'Principal', norm(department)==='Secondary' ? 'Head of Secondary' : 'Head of Primary'];
+}
+// Fired from upsertCaseRecord() below the moment a brand-new case is first
+// saved — not a client-triggered action, so it fires consistently for both
+// the authenticated syncCase path and the unauthenticated publicSubmitConcern
+// path (a report filed from the sign-in screen) from one place.
+function notifyNewConcern(caseId, studentName, category, department, reporter){
+  const users = usersInRoles(relevantRolesForDepartment(department));
+  users.forEach(function(u){
+    try {
+      MailApp.sendEmail({ to:u.email, subject:'[Safeguarding] New concern logged: ' + studentName,
+        body:'A new safeguarding concern has been logged by ' + (reporter||'a staff member') + '.\n\n'
+          + 'Student: ' + studentName + '\nCategory: ' + category + '\nCase reference: ' + caseId + '\n\n'
+          + 'Please log in to review the full case record.\n\n'
+          + 'This is an automated notification. Do not reply to this email.' });
+    } catch(err) { /* best-effort notification */ }
+  });
+}
+// Fired from upsertCaseRecord() below when a case sync adds a new meeting-
+// minutes entry (detected by the meetings array growing). Notifies whoever
+// the case is currently assigned to; if nobody's assigned yet, falls back to
+// the same DSL/Principal + phase-head set as a brand-new concern so it's
+// never silently missed.
+function notifyMeetingLogged(caseId, studentName, category, department, assigneeCsv, reporter){
+  const assignedRoles = String(assigneeCsv||'').split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+  const roles = assignedRoles.length ? assignedRoles : relevantRolesForDepartment(department);
+  const users = usersInRoles(roles);
+  users.forEach(function(u){
+    try {
+      MailApp.sendEmail({ to:u.email, subject:'[Safeguarding] New meeting minutes logged: ' + studentName,
+        body:'New meeting minutes have been logged on a safeguarding case by ' + (reporter||'a staff member') + '.\n\n'
+          + 'Student: ' + studentName + '\nCategory: ' + category + '\nCase reference: ' + caseId + '\n\n'
+          + 'Please log in to review the full record.\n\n'
+          + 'This is an automated notification. Do not reply to this email.' });
+    } catch(err) { /* best-effort notification */ }
+  });
 }
 
 // ── SEND case log (SENDCO / DSL / Principal) ────────────────────────────────
@@ -778,11 +822,16 @@ function normalizeCasePayload(p){
   };
 }
 function upsertCaseRecord(payload){
-  return withLock(function(){
+  let isNew = false;
+  let meetingAdded = false;
+  const result = withLock(function(){
     const sh = ensureCasesSheet();
     const cases = getCasesFresh().data || [];
     const c = normalizeCasePayload(payload);
     const idx = cases.findIndex(function(x){ return x.id === c.id; });
+    isNew = idx < 0;
+    const prevMeetingsCount = isNew ? 0 : (Array.isArray(cases[idx].meetings) ? cases[idx].meetings.length : 0);
+    meetingAdded = !isNew && c.meetings.length > prevMeetingsCount;
     const row = [c.id,c.date,c.reporter,c.studentId,c.studentName,c.year,c.category,c.subcategory,c.risk,c.status,
       c.description,c.location,c.assignee,c.department,JSON.stringify(c.strategies),JSON.stringify(c.agencies),
       JSON.stringify(c.bodyMap),JSON.stringify(c.timeline),JSON.stringify(c.actions),c.strategyImpactPositive,
@@ -793,6 +842,16 @@ function upsertCaseRecord(payload){
     bumpDataVersion();
     return { ok:true, rowId:rowId, case:c };
   });
+  // Notifications are sent outside the lock (MailApp is slow-ish, and other
+  // writers shouldn't be blocked waiting on it) and are always best-effort —
+  // a failed email must never surface as a failed save.
+  if(result && result.ok){
+    try{
+      if(isNew) notifyNewConcern(result.case.id, result.case.studentName, result.case.category, result.case.department, result.case.reporter);
+      else if(meetingAdded) notifyMeetingLogged(result.case.id, result.case.studentName, result.case.category, result.case.department, result.case.assignee, result.case.reporter);
+    }catch(e){ /* best-effort notification */ }
+  }
+  return result;
 }
 // Lets a concern be filed from the sign-in screen without an account (e.g. a
 // visiting/supply staff member with no login yet — see
