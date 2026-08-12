@@ -1303,7 +1303,19 @@ const fmtTime = d => new Date(d).toLocaleTimeString('en-GB',{hour:'2-digit',minu
 const daysBetween = (a,b) => Math.round((new Date(b)-new Date(a))/86400000);
 const initials = n => n.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
 const isOpen = c => c.status !== 'Resolved';
-function icons(){ if(window.lucide) lucide.createIcons(); }
+// icons() is called ~45 times across the render functions, often several
+// times back-to-back for one user action (e.g. opening a case re-renders
+// five sub-panels, each ending with its own icons() call). lucide.createIcons()
+// does a full-document scan every time it runs, so without batching that's
+// several full scans for one click. Coalescing to one rAF-scheduled call
+// per frame keeps the same visual result at a fraction of the CPU cost —
+// most noticeable on lower-end/mobile devices.
+let _iconsScheduled = false;
+function icons(){
+  if(_iconsScheduled) return;
+  _iconsScheduled = true;
+  requestAnimationFrame(()=>{ _iconsScheduled=false; if(window.lucide) lucide.createIcons(); });
+}
 function debounce(fn, wait=200){
   let t;
   return function(...args){ clearTimeout(t); t=setTimeout(()=>fn.apply(this,args), wait); };
@@ -1381,7 +1393,25 @@ const LS = {
   get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
   set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 };
-function persist(){ LS.set('ics_db', JSON.stringify(DB)); }
+// persist() is called ~30 times across the app, once per user action, and
+// serializes the WHOLE DB (every case, timeline, meeting) synchronously on
+// the click's own frame — with a school's-worth of history that JSON.stringify
+// + localStorage.setItem can be a real, visible stall right when the UI
+// should be responding instantly. Deferring the write to idle time (and
+// coalescing back-to-back calls into one, since the deferred write always
+// serializes whatever DB looks like when it actually runs) removes that
+// stall without changing what gets saved or losing any data — a pending
+// write is force-flushed if the tab is hidden/closed before idle time.
+let _persistScheduled = false;
+function persistNow(){ _persistScheduled=false; LS.set('ics_db', JSON.stringify(DB)); }
+function persist(){
+  if(_persistScheduled) return;
+  _persistScheduled = true;
+  if(window.requestIdleCallback) requestIdleCallback(persistNow, {timeout:500});
+  else setTimeout(persistNow, 0);
+}
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden' && _persistScheduled) persistNow(); });
+window.addEventListener('pagehide', ()=>{ if(_persistScheduled) persistNow(); });
 function loadPersisted(){
   const raw=LS.get('ics_db');
   if(raw){ try{ DB=JSON.parse(raw); return true; }catch(e){} }
