@@ -44,7 +44,9 @@ const NOTES_MAX_LENGTH = 5000;
 // whatever count they were created under.
 const PBKDF2_ITERATIONS = 2000;
 const SESSION_TTL_SECONDS = 1200; // 20 min sliding idle timeout
+const SESSION_IDLE_MS = SESSION_TTL_SECONDS * 1000;
 const SESSION_MAX_AGE_MS = 8 * 3600000; // 8h absolute cap, matches prior client-side session length
+const SESSION_STORE_REFRESH_MS = 60000; // keep durable fallback reasonably fresh without rewriting it on every call
 const LOGIN_MAX_ATTEMPTS = 5;
 const LOGIN_LOCKOUT_SECONDS = 900; // 15 min
 
@@ -231,37 +233,68 @@ function rateLimited(code, fn){
   return result;
 }
 
-// ── Sessions (CacheService — opaque token never logged or stored raw) ──────
+// ── Sessions (CacheService fast path + Script Properties durable fallback;
+// opaque token never logged or stored raw) ───────────────────────────────────
+function sessionKey(token){
+  return 'sess_' + sha256Hex(token);
+}
+function cacheSession(key, raw){
+  CacheService.getScriptCache().put(key, raw, SESSION_TTL_SECONDS);
+}
+function persistSessionRecord(key, raw){
+  PropertiesService.getScriptProperties().setProperty(key, raw);
+}
+function removeSessionRecord(key){
+  CacheService.getScriptCache().remove(key);
+  PropertiesService.getScriptProperties().deleteProperty(key);
+}
+function loadSessionRecord(key){
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get(key);
+  if(cached) return { raw:cached, fromCache:true };
+  const persisted = PropertiesService.getScriptProperties().getProperty(key);
+  if(persisted) cacheSession(key, persisted);
+  return { raw:persisted, fromCache:false };
+}
+function writeSessionRecord(key, session, persistToo){
+  const raw = JSON.stringify(session);
+  cacheSession(key, raw);
+  if(persistToo !== false) persistSessionRecord(key, raw);
+  return raw;
+}
 function createSession(user){
   const token = secureToken();
-  const cache = CacheService.getScriptCache();
-  const key = 'sess_' + sha256Hex(token);
-  cache.put(key, JSON.stringify({
+  const now = Date.now();
+  writeSessionRecord(sessionKey(token), {
     userId: user.id, role: user.role, firstName: user.firstName, lastName: user.lastName,
-    loginAt: Date.now()
-  }), SESSION_TTL_SECONDS);
+    loginAt: now, lastSeenAt: now
+  }, true);
   return token;
 }
 function requireSession(token){
   const t = norm(token);
   if(!t) return { ok:false, error:'Session expired. Please sign in again.', code:'AUTH' };
-  const cache = CacheService.getScriptCache();
-  const key = 'sess_' + sha256Hex(t);
-  const raw = cache.get(key);
+  const key = sessionKey(t);
+  const loaded = loadSessionRecord(key);
+  const raw = loaded.raw;
   if(!raw) return { ok:false, error:'Session expired. Please sign in again.', code:'AUTH' };
   let sess;
-  try { sess = JSON.parse(raw); } catch(e){ return { ok:false, error:'Session expired. Please sign in again.', code:'AUTH' }; }
-  if(!sess.loginAt || (Date.now() - sess.loginAt) > SESSION_MAX_AGE_MS){
-    cache.remove(key);
+  try { sess = JSON.parse(raw); } catch(e){ removeSessionRecord(key); return { ok:false, error:'Session expired. Please sign in again.', code:'AUTH' }; }
+  const now = Date.now();
+  if(!sess.loginAt || !sess.lastSeenAt || (now - sess.lastSeenAt) > SESSION_IDLE_MS || (now - sess.loginAt) > SESSION_MAX_AGE_MS){
+    removeSessionRecord(key);
     return { ok:false, error:'Session expired. Please sign in again.', code:'AUTH' };
   }
-  // Sliding expiry: any authenticated call extends the idle window.
-  cache.put(key, raw, SESSION_TTL_SECONDS);
+  // Sliding expiry: any authenticated call extends the idle window, with a
+  // durable fallback in case CacheService evicts the session between requests.
+  const previousLastSeenAt = Number(sess.lastSeenAt) || 0;
+  sess.lastSeenAt = now;
+  writeSessionRecord(key, sess, !loaded.fromCache || !previousLastSeenAt || (now - previousLastSeenAt) >= SESSION_STORE_REFRESH_MS);
   return { ok:true, user:{ id:sess.userId, firstName:sess.firstName, lastName:sess.lastName, role:sess.role }, cacheKey:key };
 }
 function logoutAction(token){
   const t = norm(token);
-  if(t) CacheService.getScriptCache().remove('sess_' + sha256Hex(t));
+  if(t) removeSessionRecord(sessionKey(t));
   return { ok:true };
 }
 
