@@ -18,7 +18,7 @@
   Lucide and Chart.js are vendored locally with only their source-map footer
   removed, so the browser doesn't make blocked .map fetches under this CSP.
 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://icanskill.com https://svgsilh.com; connect-src 'self' https://script.google.com https://script.googleusercontent.com; object-src 'none'; base-uri 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://icanskill.com https://admin.icanskill.com https://svgsilh.com; connect-src 'self' https://script.google.com https://script.googleusercontent.com; object-src 'none'; base-uri 'self';">
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="./vendor/lucide-0.462.0.js"></script>
@@ -763,6 +763,9 @@ tailwind.config = {
           <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Status</h4>
           <select id="caseStatus" onchange="changeStatus()" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-bold">
             <option>New</option><option>In progress</option><option>Monitoring</option><option>Referred</option><option>Resolved</option></select></div>
+          <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Risk level</h4>
+          <select id="caseRisk" onchange="changeRisk()" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-bold">
+            <option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select></div>
           <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Assigned to</h4>
           <div id="caseAssignee" class="flex flex-wrap gap-1.5"></div></div>
           <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Multi-agency referrals</h4>
@@ -1190,6 +1193,10 @@ const ASSIGNABLE_ROLES = ['Teacher', 'SENDCO', 'Pastoral Lead', 'Deputy DSL', 'H
 // confidentiality tradeoff for this feature specifically.
 const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
 const ALLOWED_ATTACHMENT_MIME = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+
+// Shared header for every print/PDF export (printChronology, printCaseMeetings,
+// printCase, exportSendReportPDF) — one place to change the school logo.
+const PRINT_LOGO_HTML = '<img src="https://admin.icanskill.com/wp-content/uploads/2024/06/school.svg" alt="School logo" style="max-height:50px;margin-bottom:12px;display:block">';
 
 const STRATEGY_GROUPS = [
   { title:'Classroom Environment', items:[
@@ -2286,14 +2293,20 @@ async function postLive(body){
 }
 
 // ---------- CASE detail ----------
-function openCase(id){
-  activeCaseId=id; const c=DB.cases.find(x=>x.id===id); if(!c) return;
-  const s=studentById(c.studentId);
-  const k=RISK[safeRisk(c.risk)];
+// Split out so changeRisk() can refresh just the header (badge + avatar
+// ring color) after an edit, without re-running all of openCase()'s other
+// work (body map, SEND fetch, etc).
+function renderCaseHeader(c){
   $('caseHeader').innerHTML = `<div class="flex items-center gap-3 min-w-0">${avatar(c.studentName,'w-12 h-12',c.risk)}
     <div class="min-w-0"><div class="flex items-center gap-2 flex-wrap"><button onclick="openStudent('${c.studentId}')" class="font-display font-bold text-lg text-ink hover:text-brand truncate">${esc(c.studentName)}</button>${riskBadge(c.risk)}</div>
     <div class="text-xs font-semibold text-slate-400 flex items-center gap-1.5"><i data-lucide="${catIcon(c.category)}" class="w-3.5 h-3.5"></i>${esc(c.category)}${c.subcategory?' · '+esc(c.subcategory):''} · ${esc(c.year)}</div></div></div>
     <button onclick="closeModal('caseModal')" class="w-9 h-9 grid place-items-center rounded-full hover:bg-dim text-slate-500 shrink-0"><i data-lucide="x" class="w-5 h-5"></i></button>`;
+  icons();
+}
+function openCase(id){
+  activeCaseId=id; const c=DB.cases.find(x=>x.id===id); if(!c) return;
+  const s=studentById(c.studentId);
+  renderCaseHeader(c);
   $('caseDesc').textContent=c.description;
   // body map
   if((c.bodyMap||[]).length){
@@ -2306,9 +2319,8 @@ function openCase(id){
     $('caseBodyMapNotes').innerHTML='';
   }
   $('caseStatus').value=c.status;
+  $('caseRisk').value=safeRisk(c.risk);
   renderCaseAssignee(c);
-  const isDSL = IS_ADMIN();
-  $('caseStatus').disabled = !isDSL;
   // agencies
   $('caseAgencies').innerHTML = Object.entries(AGENCIES).map(([key,a])=>{ const on=(c.agencies||[]).includes(key);
     return `<button onclick="toggleAgency('${key}')" class="w-full flex items-center justify-between px-3 h-11 rounded-xl border-2 ${on?`border-${a.color} bg-${a.color}Soft`:'border-line bg-card'} transition-colors">
@@ -2519,6 +2531,14 @@ function changeStatus(){ const c=DB.cases.find(x=>x.id===activeCaseId); const v=
   c.status=v; c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'status',text:`Status changed to ${v}.`});
   logAudit('Status updated', `${c.studentName} → ${v}`); if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
   persist(); renderCaseTimeline(c); renderAll(); toast('Status updated'); }
+// Risk level is editable by any signed-in user with access to the case —
+// unlike Status, which stays DSL-only (see the caseStatus.disabled line
+// above in openCase()).
+function changeRisk(){ const c=DB.cases.find(x=>x.id===activeCaseId); const v=$('caseRisk').value; const old=safeRisk(c.risk);
+  if(v===old) return;
+  c.risk=v; c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'status',text:`Risk level changed from ${old} to ${v}.`});
+  logAudit('Risk level updated', `${c.studentName} → ${v}`); if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
+  persist(); renderCaseHeader(c); renderCaseTimeline(c); renderAll(); toast('Risk level updated'); }
 function renderCaseAssignee(c){
   const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(s=>s.trim()).filter(Boolean);
   $('caseAssignee').innerHTML = ASSIGNABLE_ROLES.map(role=>{
@@ -2795,6 +2815,7 @@ function printChronology(){
       tr:nth-child(even){background:#f9f9f9}
       .footer{margin-top:24px;padding-top:12px;border-top:1px solid #ddd;color:#666;font-size:11px}
     </style></head><body>
+    ${PRINT_LOGO_HTML}
     <h1>Full chronology — ${esc(s.name)}</h1>
     <div class="meta"><p><strong>${esc(s.year||'')} ${esc(s.form?('· '+s.form):'')}</strong></p>
       <p>Prepared by: ${esc(ME.name)} (${esc(ME.role)})</p><p>Generated: ${new Date().toLocaleString()}</p></div>
@@ -2832,6 +2853,7 @@ function printCaseMeetings(){
       .entry p.attachments{margin-top:8px;font-size:11px;color:#0d7a6f}
       .footer{margin-top:24px;padding-top:12px;border-top:1px solid #ddd;color:#666;font-size:11px}
     </style></head><body>
+    ${PRINT_LOGO_HTML}
     <h1>Meeting minutes — ${esc(c.studentName)}</h1>
     <div class="meta"><p><strong>Case reference: ${esc(c.id.slice(0,8).toUpperCase())}</strong> · ${esc(c.category)}</p>
       <p>Prepared by: ${esc(ME.name)} (${esc(ME.role)})</p><p>Generated: ${new Date().toLocaleString()}</p></div>
@@ -2878,6 +2900,7 @@ function printCase(){
       .entry p{margin:0;font-size:12px;white-space:pre-wrap}
       .footer{margin-top:24px;padding-top:12px;border-top:1px solid #ddd;color:#666;font-size:11px}
     </style></head><body>
+    ${PRINT_LOGO_HTML}
     <h1>Case summary — ${esc(c.studentName)}</h1>
     <div class="meta">
       <p><strong>${esc(c.category)}${c.subcategory?(' · '+esc(c.subcategory)):''}</strong> · Risk: ${esc(c.risk)} · Status: ${esc(c.status)}</p>
@@ -3655,6 +3678,7 @@ async function exportSendReportPDF(){
       </style>
     </head>
     <body>
+      ${PRINT_LOGO_HTML}
       <h1>SEND & Safeguarding Whole School Report</h1>
       <div class="meta">
         <p><strong>Period:</strong> ${month}</p>
