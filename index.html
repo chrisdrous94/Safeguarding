@@ -278,7 +278,7 @@ tailwind.config = {
       <button id="vList" onclick="setConView('list')" class="px-3 py-1.5 rounded-full text-slate-500">List</button>
     </div>
   </div>
-  <div id="conBoard" class="grid grid-cols-1 xl:grid-cols-3 gap-4"></div>
+  <div id="conBoard" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4"></div>
   <div id="conList" class="hidden bg-card rounded-4xl border border-line shadow-soft overflow-hidden"></div>
 </section>
 
@@ -1897,7 +1897,7 @@ function renderConcerns(){
   const list = full.slice(0, concernsVisibleCount);
   const remaining = full.length - list.length;
   if(conView==='board'){
-    const cols=[['New / In progress',c=>c.status==='New'||c.status==='In progress'],['Monitoring / Referred',c=>c.status==='Monitoring'||c.status==='Referred'],['Resolved',c=>c.status==='Resolved']];
+    const cols=[['New',c=>c.status==='New'],['In progress',c=>c.status==='In progress'],['Monitoring / Referred',c=>c.status==='Monitoring'||c.status==='Referred'],['Resolved',c=>c.status==='Resolved']];
     $('conBoard').innerHTML = cols.map(([title,fn])=>{
       const items=list.filter(fn);
       return `<div class="space-y-3"><div class="flex items-center justify-between px-1"><h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">${title}</h3><span class="text-[10px] font-bold bg-dim text-slate-500 px-2 py-0.5 rounded-full">${items.length}</span></div>
@@ -2428,11 +2428,33 @@ function renderCaseActions(c){
 function renderCaseTimeline(c){
   const tl=[...(c.timeline||[])].sort((a,b)=>new Date(b.time)-new Date(a.time));
   const ico={log:'flag',note:'message-square',action:'list-checks',status:'refresh-cw',agency:'git-merge',send:'clipboard-list'};
-  $('caseTimeline').innerHTML = tl.map(e=>`<div class="relative">
+  // Chronology deletion is Lead DSL-only — deliberately narrower than every
+  // other case edit here, since removing a safeguarding record (rather than
+  // adding to it) is the one destructive action in the chronology.
+  const canDelete = ME.role==='Lead DSL';
+  $('caseTimeline').innerHTML = tl.map(e=>{
+    const idx = c.timeline.indexOf(e); // position in the raw (unsorted) array — what deleteTimelineEntry() targets
+    return `<div class="relative">
     <span class="absolute -left-[26px] top-0.5 w-7 h-7 -ml-2 rounded-full bg-card border border-line grid place-items-center"><i data-lucide="${ico[e.type]||'dot'}" class="w-3.5 h-3.5 text-brand"></i></span>
-    <div class="text-[10px] font-bold uppercase tracking-wide text-slate-400">${fmtShort(e.time)} ${fmtTime(e.time)} · ${esc(e.author)}</div>
-    <div class="text-sm text-slate-700 font-medium">${esc(e.text)}</div></div>`).join('');
+    <div class="flex items-start justify-between gap-2">
+      <div class="min-w-0">
+        <div class="text-[10px] font-bold uppercase tracking-wide text-slate-400">${fmtShort(e.time)} ${fmtTime(e.time)} · ${esc(e.author)}</div>
+        <div class="text-sm text-slate-700 font-medium">${esc(e.text)}</div>
+      </div>
+      ${canDelete ? `<button onclick="deleteTimelineEntry(${idx})" title="Delete entry" class="w-6 h-6 shrink-0 rounded-full hover:bg-critSoft text-slate-300 hover:text-crit grid place-items-center"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
+    </div>
+  </div>`;
+  }).join('');
   icons();
+}
+function deleteTimelineEntry(index){
+  if(ME.role!=='Lead DSL') return;
+  const c = DB.cases.find(x=>x.id===activeCaseId); if(!c) return;
+  if(!confirm('Delete this chronology entry? This cannot be undone.')) return;
+  c.timeline.splice(index,1);
+  logAudit('Chronology entry deleted', c.studentName);
+  if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
+  persist(); renderCaseTimeline(c); toast('Chronology entry deleted');
 }
 // ---------- LINKED CASES (Work Item 5) ----------
 function renderCaseLinked(c){
@@ -2499,18 +2521,19 @@ function changeStatus(){ const c=DB.cases.find(x=>x.id===activeCaseId); const v=
   persist(); renderCaseTimeline(c); renderAll(); toast('Status updated'); }
 function renderCaseAssignee(c){
   const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(s=>s.trim()).filter(Boolean);
-  const isDSL = IS_ADMIN();
   $('caseAssignee').innerHTML = ASSIGNABLE_ROLES.map(role=>{
     const on = assigneeList.includes(role);
     const safe = role.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    return `<button type="button" ${isDSL?`onclick="toggleAssignee('${safe}')"`:'disabled'} class="inline-flex items-center gap-1 pl-2.5 pr-2 h-7 rounded-full border-2 text-[11px] font-bold transition-colors ${on?'border-brand bg-brandSoft text-brandDark':'border-line bg-card text-slate-600'} ${isDSL?'hover:border-brand/40':'opacity-70 cursor-default'}">
+    return `<button type="button" onclick="toggleAssignee('${safe}')" class="inline-flex items-center gap-1 pl-2.5 pr-2 h-7 rounded-full border-2 text-[11px] font-bold transition-colors ${on?'border-brand bg-brandSoft text-brandDark':'border-line bg-card text-slate-600'} hover:border-brand/40">
       ${esc(role)}<i data-lucide="${on?'check':'plus'}" class="w-3 h-3 ${on?'text-brandDark':'text-slate-300'}"></i></button>`;
   }).join('');
   icons();
 }
+// Any signed-in user with access to this case can (re)assign it — matches
+// every other case-editing action here (changeStatus, addCaseNote,
+// toggleAgency, ...), none of which are role-gated either; visibility into
+// which cases you can even open is already controlled by visibleCases().
 function toggleAssignee(role){
-  const isDSL = IS_ADMIN();
-  if(!isDSL) { toast('Only DSL can assign cases','warning'); return; }
   const c=DB.cases.find(x=>x.id===activeCaseId);
   const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(s=>s.trim()).filter(Boolean);
   const idx = assigneeList.indexOf(role);
