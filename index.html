@@ -517,12 +517,9 @@ tailwind.config = {
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
     <!-- 7. Traffic light indicators -->
     <div class="bg-card rounded-4xl border border-line shadow-soft p-5 sm:p-6">
-      <h3 class="font-display font-bold text-base text-ink mb-4">7. Traffic Light Indicators</h3>
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-medium text-slate-600">
-        <div class="rounded-2xl border border-line p-3"><div class="flex items-center gap-2 font-bold text-ok mb-1.5"><span class="w-2.5 h-2.5 rounded-full bg-ok"></span>Green</div><ul class="space-y-1 list-disc list-inside text-slate-500"><li>Observation completed on time</li><li>Parents informed</li><li>Plan implemented</li></ul></div>
-        <div class="rounded-2xl border border-line p-3"><div class="flex items-center gap-2 font-bold text-med mb-1.5"><span class="w-2.5 h-2.5 rounded-full bg-med"></span>Amber</div><ul class="space-y-1 list-disc list-inside text-slate-500"><li>Waiting for external assessment</li><li>Attendance concerns</li><li>Monitoring progress</li></ul></div>
-        <div class="rounded-2xl border border-line p-3"><div class="flex items-center gap-2 font-bold text-crit mb-1.5"><span class="w-2.5 h-2.5 rounded-full bg-crit"></span>Red</div><ul class="space-y-1 list-disc list-inside text-slate-500"><li>Immediate safeguarding concern</li><li>High-risk behaviour</li><li>Child protection referral</li><li>Urgent mental health concern</li></ul></div>
-      </div>
+      <h3 class="font-display font-bold text-base text-ink mb-1">7. Traffic Light Indicators</h3>
+      <p class="text-xs text-slate-400 font-medium mb-4">Live counts for the selected period (overdue actions are always as of today)</p>
+      <div id="srTrafficLights" class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-medium text-slate-600"></div>
     </div>
     <!-- 8. Principal summary -->
     <div class="bg-card rounded-4xl border border-line shadow-soft p-5 sm:p-6">
@@ -1438,7 +1435,11 @@ function logAudit(action, detail, who, when){
 
 // ---------- Role-based visibility ----------
 function visibleCases(){
-  if(ME.role==='Lead DSL' || ME.role==='Principal' || IS_HEAD_EXTRA()) return DB.cases;
+  // Deputy DSL has full whole-school report access (REPORT_ROLES / IS_DSL_OR_PRINCIPAL),
+  // so it must also get unrestricted case access here — otherwise every live
+  // figure on that report silently shrinks to just their own assigned/reported
+  // cases instead of the whole school's.
+  if(ME.role==='Lead DSL' || ME.role==='Principal' || ME.role==='Deputy DSL' || IS_HEAD_EXTRA()) return DB.cases;
   if(IS_PHASE_HEAD()) return DB.cases.filter(c=> caseInPhase(c, IS_HEAD_SECONDARY()?'Secondary':'Primary'));
   const myName = (ME.name||'').toLowerCase().trim();
 
@@ -3065,7 +3066,9 @@ const SR_OVERVIEW_FIELDS = [
 // Reuses the overview field labels so the case log and the report table agree.
 const SEND_CASE_STATUSES = SR_OVERVIEW_FIELDS.filter(f=> f.key!=='sendRegister' && f.key!=='newReferrals');
 // Overview rows calculated live from the SEND case log instead of monthly manual entry.
-const SR_LIVE_OVERVIEW_KEYS = ['sendRegister', ...SEND_CASE_STATUSES.map(f=>f.key)];
+// newReferrals is live too (see computeSendOverviewLive) — it counts each SEND
+// case's original loggedAt date, which every entry already carries.
+const SR_LIVE_OVERVIEW_KEYS = ['sendRegister', 'newReferrals', ...SEND_CASE_STATUSES.map(f=>f.key)];
 const SR_REFERRAL_SOURCES = [
   { key:'teacher',  label:'Teacher',               color:'police' },
   { key:'parent',   label:'Parent',                color:'ok' },
@@ -3288,24 +3291,43 @@ async function loadSendCasesData(force){
   }catch(e){}
   return SEND_CASES_LIST;
 }
-function computeSendOverviewLive(){
+// Register/stage counts are cumulative "as of the end of the selected period"
+// (a SEND case logged after that date hasn't happened yet from that report's
+// point of view) using each case's CURRENT status — there's no historical
+// status trail, so this can't reconstruct what the status was back then, only
+// who was already on the register by then. A row with no loggedAt at all
+// (only possible on data that predates this field) still counts towards the
+// cumulative totals rather than silently vanishing from every report — it
+// just can't contribute to "new referrals this period" below, since we don't
+// know when it actually joined.
+function computeSendOverviewLive(start, end){
   const counts = {};
   SEND_CASE_STATUSES.forEach(f=>{ counts[f.key] = { primary:0, secondary:0 }; });
   const register = { primary:new Set(), secondary:new Set() };
+  const newRef = { primary:new Set(), secondary:new Set() };
   SEND_CASES_LIST.forEach(c=>{
     const dept = c.department==='Secondary' ? 'secondary' : 'primary';
-    if(counts[c.status]) counts[c.status][dept]++;
-    if(c.studentId) register[dept].add(c.studentId);
+    const t = c.loggedAt ? new Date(c.loggedAt).getTime() : NaN;
+    const hasDate = !isNaN(t);
+    if(!hasDate || t <= end.getTime()){
+      if(counts[c.status]) counts[c.status][dept]++;
+      if(c.studentId) register[dept].add(c.studentId);
+    }
+    if(hasDate && t >= start.getTime() && t <= end.getTime() && c.studentId) newRef[dept].add(c.studentId);
   });
   counts.sendRegister = { primary: register.primary.size, secondary: register.secondary.size };
+  counts.newReferrals = { primary: newRef.primary.size, secondary: newRef.secondary.size };
   return counts;
 }
 // One student can only carry one primary area of need, so this counts each
-// studentId once per area rather than once per logged row.
-function computeSendNeedsProfileLive(){
+// studentId once per area rather than once per logged row. Same "as of the
+// end of the selected period" cumulative treatment as computeSendOverviewLive.
+function computeSendNeedsProfileLive(end){
   const sets = {}; SR_NEEDS_PROFILE.forEach(n=>{ sets[n.key] = new Set(); });
   SEND_CASES_LIST.forEach(c=>{
-    if(c.needArea && sets[c.needArea] && c.studentId) sets[c.needArea].add(c.studentId);
+    const t = c.loggedAt ? new Date(c.loggedAt).getTime() : NaN;
+    const hasDate = !isNaN(t);
+    if((!hasDate || t <= end.getTime()) && c.needArea && sets[c.needArea] && c.studentId) sets[c.needArea].add(c.studentId);
   });
   const out = {}; SR_NEEDS_PROFILE.forEach(n=>{ out[n.key] = sets[n.key].size; });
   return out;
@@ -3314,9 +3336,10 @@ function computeSendNeedsProfileLive(){
 // every consumer (report table, CSV/PDF export, edit modal) stays in sync automatically.
 async function applyLiveSendOverview(force){
   await loadSendCasesData(force);
-  const live = computeSendOverviewLive();
+  const { start, end } = getSrWindow();
+  const live = computeSendOverviewLive(start, end);
   Object.keys(live).forEach(k=>{ SEND_REPORT.overview[k] = live[k]; });
-  const needsLive = computeSendNeedsProfileLive();
+  const needsLive = computeSendNeedsProfileLive(end);
   Object.keys(needsLive).forEach(k=>{ SEND_REPORT.needs[k] = needsLive[k]; });
 }
 function sendStatusLabel(key){
@@ -3420,8 +3443,14 @@ function studentDotInitials(name){
 }
 function monthKey(d){ const x=new Date(d); return x.getFullYear()+'-'+x.getMonth(); }
 
-function safeguardingCategorySplit(){
-  const open = visibleCases().filter(isOpen);
+// "Open as of the end of the selected period" — a concern logged after that
+// date shouldn't appear in an earlier period's report, but one still open
+// from before/during the period should, regardless of when exactly it started.
+function openAsOf(list, end){
+  return end ? list.filter(c=> new Date(c.date) <= end) : list;
+}
+function safeguardingCategorySplit(end){
+  const open = openAsOf(visibleCases().filter(isOpen), end);
   const counts = {}; SR_CATEGORY_BUCKETS.forEach(b=>counts[b.key]=0);
   let other=0;
   open.forEach(c=>{
@@ -3439,7 +3468,7 @@ function overviewDeptSplit(list){
 }
 function overviewLiveRows(start, end){
   const cs = visibleCases();
-  const open = cs.filter(isOpen);
+  const open = openAsOf(cs.filter(isOpen), end);
   const highRisk = open.filter(c=>c.risk==='High'||c.risk==='Critical');
   const closed = cs.filter(c=>{
     if(c.status!=='Resolved') return false;
@@ -3463,6 +3492,46 @@ function actionStatusInfo(a){
   if(a.due && new Date(a.due) < today()) return { label:'Overdue', color:'crit', icon:'alert-triangle' };
   return { label:'In Progress', color:'med', icon:'clock' };
 }
+// Section 7 used to be static descriptive text, not connected to any real
+// data — this computes actual counts against fixed thresholds instead,
+// reusing figures already computed elsewhere in the report (counts/acts/
+// closedCount) so there's one source of truth per metric. Overdue actions
+// are deliberately "as of today" rather than period-bound — overdue is
+// inherently relative to now, not to a historical report period.
+function computeTrafficLights(counts, acts, closedCount, srEnd){
+  const openConcerns = openAsOf(visibleCases(), srEnd).filter(isOpen);
+  const overdueActions = allActions().filter(a=> !a.done && a.due && new Date(a.due) < today()).length;
+  const extAssessPending = SEND_REPORT.overview.extAssessPending || {primary:0,secondary:0};
+  return {
+    red: [
+      { label:'Critical-risk concerns open',       value: openConcerns.filter(c=>c.risk==='Critical').length },
+      { label:'Overdue actions (as of today)',     value: overdueActions },
+      { label:'Open Child Protection concerns',    value: counts.childProtection||0 }
+    ],
+    amber: [
+      { label:'High-risk concerns open',           value: openConcerns.filter(c=>c.risk==='High').length },
+      { label:'Cases Monitoring / Referred',       value: openConcerns.filter(c=>c.status==='Monitoring'||c.status==='Referred').length },
+      { label:'External assessments pending',      value: (Number(extAssessPending.primary)||0)+(Number(extAssessPending.secondary)||0) }
+    ],
+    green: [
+      { label:'Concerns resolved in period',       value: closedCount },
+      { label:'Actions completed (due this period)', value: acts.filter(a=>a.done).length }
+    ]
+  };
+}
+function trafficLightColumn(dotClass, textClass, title, items){
+  return `<div class="rounded-2xl border border-line p-3">
+    <div class="flex items-center gap-2 font-bold ${textClass} mb-1.5"><span class="w-2.5 h-2.5 rounded-full ${dotClass}"></span>${title}</div>
+    <ul class="space-y-1 text-slate-500">${items.map(i=>`<li class="flex items-center justify-between gap-2"><span>${esc(i.label)}</span><span class="font-extrabold ${textClass}">${i.value}</span></li>`).join('')}</ul>
+  </div>`;
+}
+function renderTrafficLights(lights){
+  const el = $('srTrafficLights'); if(!el) return;
+  el.innerHTML =
+    trafficLightColumn('bg-ok','text-ok','Green', lights.green) +
+    trafficLightColumn('bg-med','text-med','Amber', lights.amber) +
+    trafficLightColumn('bg-crit','text-crit','Red', lights.red);
+}
 
 async function renderSendReport(){
   const token = ++srLoadToken;
@@ -3481,7 +3550,8 @@ async function renderSendReport(){
     const primary=Number(v.primary)||0, secondary=Number(v.secondary)||0;
     return { label:f.label, primary, secondary, total:primary+secondary };
   });
-  const rows = [...manualRows, ...overviewLiveRows(srStart, srEnd)];
+  const liveOverviewRows = overviewLiveRows(srStart, srEnd);
+  const rows = [...manualRows, ...liveOverviewRows];
   $('srOverviewBody').innerHTML = rows.map(r=>`<tr class="border-b border-line last:border-0">
     <td class="px-5 py-2.5 font-semibold text-slate-700">${esc(r.label)}</td>
     <td class="px-5 py-2.5 text-slate-500 font-medium">${r.primary}</td>
@@ -3515,7 +3585,7 @@ async function renderSendReport(){
   $('srNeedsTotal').textContent = SR_NEEDS_PROFILE.reduce((a,n)=>a+(Number(SEND_REPORT.needs[n.key])||0),0);
 
   // 4. Safeguarding concerns by category (live)
-  const { counts, other, total } = safeguardingCategorySplit();
+  const { counts, other, total } = safeguardingCategorySplit(srEnd);
   const catMax = Math.max(1, ...SR_CATEGORY_BUCKETS.map(b=>counts[b.key]), other);
   $('srCategoryBars').innerHTML = SR_CATEGORY_BUCKETS.map(b=>{
     const v = counts[b.key];
@@ -3550,7 +3620,7 @@ async function renderSendReport(){
     { label:'Avg. time referral → observation',          value: SEND_REPORT.stats.avgReferralToObs || '—', unit:'days' , icon:'clock' },
     { label:'Avg. time observation → parent meeting',    value: SEND_REPORT.stats.avgObsToParent || '—',   unit:'days' , icon:'users-round' },
     { label:'IESP reviews due in selected period',          value: SEND_REPORT.stats.iepReviewsDue || '0',    unit:''     , icon:'clipboard-list' },
-    { label:'Safeguarding cases requiring monitoring',    value: visibleCases().filter(c=>c.status==='Monitoring').length, unit:'', icon:'shield-check', live:true },
+    { label:'Safeguarding cases requiring monitoring',    value: openAsOf(visibleCases(), srEnd).filter(c=>c.status==='Monitoring').length, unit:'', icon:'shield-check', live:true },
     { label:'Staff referrals submitted in selected period', value: visibleCases().filter(c=>inWindow(c.date, srStart, srEnd)).length, unit:'', icon:'users', live:true }
   ];
   $('srKeyStats').innerHTML = stats.map(s=>`<div class="text-center">
@@ -3558,6 +3628,10 @@ async function renderSendReport(){
     <div class="font-display font-extrabold text-2xl text-ink">${esc(String(s.value))}${s.unit?`<span class="text-xs font-bold text-slate-400"> ${s.unit}</span>`:''}</div>
     <div class="text-[11px] font-semibold text-slate-400 mt-1">${esc(s.label)}${s.live?' · live':''}</div>
   </div>`).join('');
+
+  // 7. Traffic light indicators (live)
+  const closedCount = (liveOverviewRows.find(r=>r.label.startsWith('Cases Closed'))||{}).total || 0;
+  renderTrafficLights(computeTrafficLights(counts, acts, closedCount, srEnd));
 
   // 8. Principal summary (manual)
   const summary = [
@@ -3613,22 +3687,33 @@ async function exportSendReportCSV(){
   // Safeguarding Categories
   rows.push(['SECTION 4: SAFEGUARDING CONCERNS BY CATEGORY']);
   rows.push(['Category', 'Count']);
-  const { counts, other, total } = safeguardingCategorySplit();
+  const { counts, other, total } = safeguardingCategorySplit(srEnd);
   SR_CATEGORY_BUCKETS.forEach(b=>rows.push([b.label, counts[b.key]]));
   rows.push(['Other', other]);
   rows.push(['Total Open Concerns', total]);
   rows.push([]);
-  
+
   // Key Statistics
   rows.push(['SECTION 6: KEY STATISTICS']);
   rows.push(['Statistic', 'Value']);
   rows.push(['Avg. days referral to observation', SEND_REPORT.stats.avgReferralToObs || '—']);
   rows.push(['Avg. days observation to parent meeting', SEND_REPORT.stats.avgObsToParent || '—']);
   rows.push(['IESP reviews due in selected period', SEND_REPORT.stats.iepReviewsDue || '0']);
-  rows.push(['Cases requiring monitoring', visibleCases().filter(c=>c.status==='Monitoring').length]);
+  rows.push(['Cases requiring monitoring', openAsOf(visibleCases(), srEnd).filter(c=>c.status==='Monitoring').length]);
   rows.push(['Staff referrals in selected period', visibleCases().filter(c=>inWindow(c.date, srStart, srEnd)).length]);
   rows.push([]);
-  
+
+  // Traffic Light Indicators
+  rows.push(['SECTION 7: TRAFFIC LIGHT INDICATORS']);
+  const acts = actionsDueInWindow(srStart, srEnd);
+  const closedCount = (overviewLive.find(r=>r.label.startsWith('Cases Closed'))||{}).total || 0;
+  const trafficLights = computeTrafficLights(counts, acts, closedCount, srEnd);
+  ['green','amber','red'].forEach(band=>{
+    rows.push([band.toUpperCase()]);
+    trafficLights[band].forEach(i=> rows.push([i.label, i.value]));
+  });
+  rows.push([]);
+
   // Principal Summary
   rows.push(['SECTION 8: PRINCIPAL SUMMARY']);
   rows.push(['Strengths', SEND_REPORT.summary.strengths || '—']);
@@ -3657,8 +3742,11 @@ async function exportSendReportPDF(){
   const { start: srStart, end: srEnd } = getSrWindow();
   const month = SEND_REPORT.month || getSrWindow().label;
   const acts = actionsDueInWindow(srStart, srEnd);
-  const { counts, other, total } = safeguardingCategorySplit();
-  
+  const { counts, other, total } = safeguardingCategorySplit(srEnd);
+  const liveOverviewRows = overviewLiveRows(srStart, srEnd);
+  const closedCount = (liveOverviewRows.find(r=>r.label.startsWith('Cases Closed'))||{}).total || 0;
+  const trafficLights = computeTrafficLights(counts, acts, closedCount, srEnd);
+
   const html = `
     <!DOCTYPE html>
     <html>
@@ -3694,7 +3782,7 @@ async function exportSendReportPDF(){
           const total = (v.primary||0)+(v.secondary||0);
           return `<tr><td>${f.label}</td><td>${v.primary||0}</td><td>${v.secondary||0}</td><td><strong>${total}</strong></td></tr>`;
         }).join('')}
-        ${overviewLiveRows(srStart, srEnd).map(r=>`<tr><td>${r.label}</td><td>${r.primary}</td><td>${r.secondary}</td><td><strong>${r.total}</strong></td></tr>`).join('')}
+        ${liveOverviewRows.map(r=>`<tr><td>${r.label}</td><td>${r.primary}</td><td>${r.secondary}</td><td><strong>${r.total}</strong></td></tr>`).join('')}
       </table>
       
       <h2>2. Referral Overview</h2>
@@ -3734,10 +3822,20 @@ async function exportSendReportPDF(){
         <tr><td>Avg. time referral to observation</td><td>${SEND_REPORT.stats.avgReferralToObs || '—'}</td></tr>
         <tr><td>Avg. time observation to parent meeting</td><td>${SEND_REPORT.stats.avgObsToParent || '—'}</td></tr>
         <tr><td>IESP reviews due in selected period</td><td>${SEND_REPORT.stats.iepReviewsDue || '0'}</td></tr>
-        <tr><td>Cases requiring monitoring</td><td>${visibleCases().filter(c=>c.status==='Monitoring').length}</td></tr>
+        <tr><td>Cases requiring monitoring</td><td>${openAsOf(visibleCases(), srEnd).filter(c=>c.status==='Monitoring').length}</td></tr>
         <tr><td>Staff referrals in selected period</td><td>${visibleCases().filter(c=>inWindow(c.date, srStart, srEnd)).length}</td></tr>
       </table>
-      
+
+      <h2>7. Traffic Light Indicators</h2>
+      <table>
+        <tr><th>Green</th><th></th></tr>
+        ${trafficLights.green.map(i=>`<tr><td>${i.label}</td><td><strong>${i.value}</strong></td></tr>`).join('')}
+        <tr><th>Amber</th><th></th></tr>
+        ${trafficLights.amber.map(i=>`<tr><td>${i.label}</td><td><strong>${i.value}</strong></td></tr>`).join('')}
+        <tr><th>Red</th><th></th></tr>
+        ${trafficLights.red.map(i=>`<tr><td>${i.label}</td><td><strong>${i.value}</strong></td></tr>`).join('')}
+      </table>
+
       <h2>8. Principal Summary</h2>
       <div class="summary">
         <h3 style="color: #047857; margin-top: 0;">Strengths</h3>
@@ -3804,7 +3902,7 @@ async function openSendReportEdit(){
     <div class="bg-card rounded-2xl border border-line p-4 space-y-3">
       <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">SEND register &amp; interventions (Primary / Secondary)</h4>
       <div class="space-y-2.5">${ovRows}</div>
-      <p class="text-[11px] text-slate-400 font-medium">Register totals and SEND stage figures are calculated automatically from the SEND case log (logged by SENDCO/DSL/Principal) and don't need entering here. Only new referrals is entered manually.</p>
+      <p class="text-[11px] text-slate-400 font-medium">Register totals, SEND stage figures and new referrals are all calculated automatically from the SEND case log (logged by SENDCO/DSL/Principal) and don't need entering here.</p>
     </div>
     <div class="bg-card rounded-2xl border border-line p-4 space-y-3">
       <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Referral overview — who raised the referral</h4>
