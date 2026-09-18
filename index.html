@@ -850,6 +850,7 @@ tailwind.config = {
           <div class="flex justify-between items-center text-sm"><span class="text-slate-500 font-medium">Key adult</span><span class="font-bold text-ink" id="stuKeyAdult">—</span></div>
         </div>
         <button onclick="reportForCurrentStudent()" class="w-full h-11 rounded-full bg-brand hover:bg-brandDark text-white text-sm font-bold flex items-center justify-center gap-2"><i data-lucide="plus" class="w-4 h-4"></i>New concern</button>
+        <button onclick="openMergeStudentModal()" class="w-full h-10 rounded-full border-2 border-line text-xs font-bold text-slate-600 hover:border-brand/40 hover:text-brand flex items-center justify-center gap-1.5"><i data-lucide="git-merge" class="w-3.5 h-3.5"></i>Merge duplicate student</button>
         <button id="stuDeleteBtn" onclick="deleteStudent()" class="hidden w-full h-10 rounded-full text-xs font-bold text-crit hover:bg-critSoft flex items-center justify-center gap-1.5"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i>Delete student from register</button>
       </div>
       <div class="md:col-span-3 p-5 sm:p-7 bg-surface">
@@ -975,6 +976,19 @@ tailwind.config = {
     <div id="linkCaseList" class="flex-1 overflow-y-auto scroll-thin border border-line rounded-xl divide-y divide-line"></div>
     <div class="flex justify-end gap-2 mt-4">
       <button onclick="closeModal('linkCaseModal')" class="h-11 px-5 rounded-full text-sm font-bold text-slate-600 hover:bg-dim">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== MERGE STUDENT MODAL ===================== -->
+<div id="mergeStudentModal" onclick="if(event.target===this)closeModal('mergeStudentModal')" class="fixed inset-0 z-[110] hidden bg-ink/50 backdrop-blur-sm flex items-center justify-center p-4 opacity-0 transition-opacity">
+  <div class="bg-surface w-full max-w-lg rounded-4xl shadow-lift p-6 pop max-h-[85vh] flex flex-col">
+    <h3 class="font-display font-bold text-ink mb-1">Merge duplicate student</h3>
+    <p id="mergeStudentSub" class="text-xs text-slate-400 font-medium mb-4">Find the duplicate record to merge in</p>
+    <input id="mergeStudentSearch" oninput="renderMergeStudentPicker()" placeholder="Search by name…" class="w-full h-11 px-3 rounded-xl bg-card border border-line text-sm font-medium mb-3">
+    <div id="mergeStudentList" class="flex-1 overflow-y-auto scroll-thin border border-line rounded-xl divide-y divide-line"></div>
+    <div class="flex justify-end gap-2 mt-4">
+      <button onclick="closeModal('mergeStudentModal')" class="h-11 px-5 rounded-full text-sm font-bold text-slate-600 hover:bg-dim">Cancel</button>
     </div>
   </div>
 </div>
@@ -2953,6 +2967,54 @@ async function deleteStudent(){
   closeModal('studentModal');
   renderAll();
   toast(`${s.name} removed from the register`);
+}
+// ---------- MERGE DUPLICATE STUDENT RECORDS ----------
+// Different reporters rarely type a student's name identically (nickname,
+// typo, missing middle name), and student matching is exact-text-only (see
+// submitConcern()) — so the same child can end up as several separate
+// student records with their case history split across them. This lets any
+// signed-in user (not just admins — matches how case editing already works
+// here) pull a duplicate record's cases/SEND entry/family membership onto
+// the one they're viewing, then removes the now-empty duplicate.
+function openMergeStudentModal(){
+  const s = studentById(activeStudentId); if(!s) return;
+  $('mergeStudentSub').textContent = `Find the duplicate record to merge into "${s.name}"`;
+  $('mergeStudentSearch').value = '';
+  renderMergeStudentPicker();
+  openModal('mergeStudentModal');
+}
+function renderMergeStudentPicker(){
+  const s = studentById(activeStudentId); if(!s) return;
+  const q = ($('mergeStudentSearch')?.value||'').toLowerCase();
+  const list = DB.students.filter(x=> x.id!==s.id && (!q || x.name.toLowerCase().includes(q)))
+    .sort((a,b)=> a.name.localeCompare(b.name)).slice(0,80);
+  $('mergeStudentList').innerHTML = list.length ? list.map(x=>{
+    const n = casesForStudent(x.id).length;
+    return `<button onclick="confirmMergeStudent('${x.id}')" class="w-full text-left flex items-center justify-between gap-2 px-3 py-2.5 hover:bg-dim/40 transition-colors">
+      <span class="min-w-0"><span class="font-bold text-ink text-sm">${esc(x.name)}</span> <span class="text-slate-400 text-[11px] font-medium">· ${esc(x.year||'—')}${x.form&&x.form!=='—'?' · '+esc(x.form):''}</span></span>
+      <span class="shrink-0 text-[11px] font-bold text-slate-400">${n} concern${n!==1?'s':''}</span>
+    </button>`;
+  }).join('') : `<p class="text-xs text-slate-400 font-medium italic p-3">${q?'No matching students found.':'Start typing to search.'}</p>`;
+}
+async function confirmMergeStudent(otherId){
+  const s = studentById(activeStudentId); const other = studentById(otherId);
+  if(!s || !other) return;
+  const otherCount = casesForStudent(other.id).length;
+  if(!confirm(`Merge "${other.name}" (${otherCount} concern${otherCount!==1?'s':''}) into "${s.name}"?\n\nAll of "${other.name}"'s concerns, SEND record and family grouping move onto "${s.name}", and the duplicate "${other.name}" record is removed. This cannot be undone.`)) return;
+  if(!CAN_USE_APPS_SCRIPT()){ toast('Apps Script URL not configured','error'); return; }
+  try{
+    const res = await scriptCall('mergeStudents', { keepId:s.id, mergeId:other.id, keepName:s.name });
+    if(!res.ok){ toast(res.error||'Could not merge students','error'); return; }
+    logAudit('Students merged', `${other.name} → ${s.name}`);
+    closeModal('mergeStudentModal');
+    toast(`Merged ${res.casesMoved||0} concern${res.casesMoved===1?'':'s'} into ${s.name}`);
+    sendCasesLoaded = false;
+    await syncData();
+    await loadSendCasesData(true);
+    await loadFamilies();
+    renderAll();
+    if($('studentModal') && !$('studentModal').classList.contains('hidden')) openStudent(s.id);
+  }catch(e){ toast('Could not merge students — check your connection','error'); }
 }
 </script>
 <script>
@@ -4975,6 +5037,89 @@ function importStudentsAction(sessionUser, students){
     return { ok:true, added:rows.length, skipped:skipped };
   });
 }
+// Merges a duplicate student record (mergeId) onto the one being kept
+// (keepId) — reassigns every case and SEND case-log row, repoints family
+// membership, and folds durable metadata (familyId/notes/roster name-year-
+// form) onto keepId's row before deleting mergeId's row. Available to any
+// signed-in user, same low-friction model as the rest of this app's case
+// editing — not restricted to admins. Best-effort across four sheets under
+// one lock; if something throws partway through, whatever was already
+// written stays written (Apps Script has no cross-sheet transaction), so
+// this always moves data forward (reassigning is idempotent to re-run) and
+// never deletes a case outright.
+function mergeStudentsAction(sessionUser, keepId, mergeId, keepName){
+  const kid = norm(keepId), mid = norm(mergeId);
+  if(!kid || !mid) return { ok:false, error:'Both students are required' };
+  if(kid===mid) return { ok:false, error:'Cannot merge a student with themselves' };
+  const nameV = validateString(keepName, 1, NAME_MAX_LENGTH);
+  if(!nameV.valid) return { ok:false, error:'Student name: ' + nameV.error };
+
+  return withLock(function(){
+    let casesMoved = 0, sendCasesMoved = 0;
+
+    // Cases — skip legacy-format rows (isModernCaseRow), which don't have a
+    // real studentId in that column and could otherwise be corrupted.
+    const caseSh = ensureCasesSheet();
+    const caseRows = caseSh.getDataRange().getValues();
+    for(let i=1;i<caseRows.length;i++){
+      const row = caseRows[i];
+      if(isModernCaseRow(row) && String(row[3])===mid){
+        caseSh.getRange(i+1,4).setValue(kid);
+        caseSh.getRange(i+1,5).setValue(nameV.value);
+        casesMoved++;
+      }
+    }
+
+    // SEND case log
+    const sendSh = ensureSendCasesSheet();
+    const sendRows = sendSh.getDataRange().getValues();
+    for(let i=1;i<sendRows.length;i++){
+      if(String(sendRows[i][1])===mid){
+        sendSh.getRange(i+1,2).setValue(kid);
+        sendSh.getRange(i+1,3).setValue(nameV.value);
+        sendCasesMoved++;
+      }
+    }
+
+    // Durable student metadata / roster row — prefer keepId's existing
+    // values over mergeId's, then drop mergeId's row entirely.
+    const studentsSh = ensureStudentsSheet();
+    const metaMap = loadStudentMetaMap();
+    const keepMeta = metaMap[kid];
+    const mergeMeta = metaMap[mid];
+    if(mergeMeta){
+      const now = nowIso();
+      const row = [
+        kid,
+        (keepMeta && keepMeta.familyId) || mergeMeta.familyId || '',
+        (keepMeta && keepMeta.notes) || mergeMeta.notes || '',
+        keepMeta ? keepMeta.createdAt : now,
+        now,
+        (keepMeta && keepMeta.name) || nameV.value,
+        (keepMeta && keepMeta.year) || mergeMeta.year || '',
+        (keepMeta && keepMeta.form) || mergeMeta.form || ''
+      ];
+      if(keepMeta) studentsSh.getRange(keepMeta.rowId,1,1,row.length).setValues([row]);
+      else studentsSh.appendRow(row);
+      studentsSh.deleteRow(mergeMeta.rowId);
+    }
+
+    // Families — repoint any membership from mergeId to keepId
+    const famSh = ensureFamiliesSheet();
+    const famRows = famSh.getDataRange().getValues();
+    for(let i=1;i<famRows.length;i++){
+      const ids = parseJsonCell(famRows[i][2], []);
+      if(Array.isArray(ids) && ids.indexOf(mid) >= 0){
+        const next = ids.map(function(x){ return x===mid ? kid : x; });
+        const deduped = next.filter(function(x, idx){ return next.indexOf(x)===idx; });
+        famSh.getRange(i+1,3).setValue(JSON.stringify(deduped));
+      }
+    }
+
+    bumpDataVersion();
+    return { ok:true, casesMoved: casesMoved, sendCasesMoved: sendCasesMoved };
+  });
+}
 
 // ── Families ─────────────────────────────────────────────────────────────
 function familiesHeaders(){ return ['familyId','familyName','studentIds','notes','createdAt','updatedAt']; }
@@ -5068,6 +5213,7 @@ function doPost(e){
       case 'listStudentMeta': return jsonOut(listStudentMeta());
       case 'saveStudentMeta': return jsonOut(saveStudentMetaAction(user, p.studentId, p.familyId, p.notes));
       case 'importStudents': return jsonOut(importStudentsAction(user, p.students));
+      case 'mergeStudents': return jsonOut(mergeStudentsAction(user, p.keepId, p.mergeId, p.keepName));
       case 'listFamilies': return jsonOut(listFamilies());
       case 'saveFamily': return jsonOut(saveFamilyAction(user, p.payload));
       case 'deleteFamily': return jsonOut(deleteFamilyAction(user, p.familyId));

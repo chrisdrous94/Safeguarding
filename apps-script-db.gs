@@ -1047,6 +1047,89 @@ function importStudentsAction(sessionUser, students){
     return { ok:true, added:rows.length, skipped:skipped };
   });
 }
+// Merges a duplicate student record (mergeId) onto the one being kept
+// (keepId) — reassigns every case and SEND case-log row, repoints family
+// membership, and folds durable metadata (familyId/notes/roster name-year-
+// form) onto keepId's row before deleting mergeId's row. Available to any
+// signed-in user, same low-friction model as the rest of this app's case
+// editing — not restricted to admins. Best-effort across four sheets under
+// one lock; if something throws partway through, whatever was already
+// written stays written (Apps Script has no cross-sheet transaction), so
+// this always moves data forward (reassigning is idempotent to re-run) and
+// never deletes a case outright.
+function mergeStudentsAction(sessionUser, keepId, mergeId, keepName){
+  const kid = norm(keepId), mid = norm(mergeId);
+  if(!kid || !mid) return { ok:false, error:'Both students are required' };
+  if(kid===mid) return { ok:false, error:'Cannot merge a student with themselves' };
+  const nameV = validateString(keepName, 1, NAME_MAX_LENGTH);
+  if(!nameV.valid) return { ok:false, error:'Student name: ' + nameV.error };
+
+  return withLock(function(){
+    let casesMoved = 0, sendCasesMoved = 0;
+
+    // Cases — skip legacy-format rows (isModernCaseRow), which don't have a
+    // real studentId in that column and could otherwise be corrupted.
+    const caseSh = ensureCasesSheet();
+    const caseRows = caseSh.getDataRange().getValues();
+    for(let i=1;i<caseRows.length;i++){
+      const row = caseRows[i];
+      if(isModernCaseRow(row) && String(row[3])===mid){
+        caseSh.getRange(i+1,4).setValue(kid);
+        caseSh.getRange(i+1,5).setValue(nameV.value);
+        casesMoved++;
+      }
+    }
+
+    // SEND case log
+    const sendSh = ensureSendCasesSheet();
+    const sendRows = sendSh.getDataRange().getValues();
+    for(let i=1;i<sendRows.length;i++){
+      if(String(sendRows[i][1])===mid){
+        sendSh.getRange(i+1,2).setValue(kid);
+        sendSh.getRange(i+1,3).setValue(nameV.value);
+        sendCasesMoved++;
+      }
+    }
+
+    // Durable student metadata / roster row — prefer keepId's existing
+    // values over mergeId's, then drop mergeId's row entirely.
+    const studentsSh = ensureStudentsSheet();
+    const metaMap = loadStudentMetaMap();
+    const keepMeta = metaMap[kid];
+    const mergeMeta = metaMap[mid];
+    if(mergeMeta){
+      const now = nowIso();
+      const row = [
+        kid,
+        (keepMeta && keepMeta.familyId) || mergeMeta.familyId || '',
+        (keepMeta && keepMeta.notes) || mergeMeta.notes || '',
+        keepMeta ? keepMeta.createdAt : now,
+        now,
+        (keepMeta && keepMeta.name) || nameV.value,
+        (keepMeta && keepMeta.year) || mergeMeta.year || '',
+        (keepMeta && keepMeta.form) || mergeMeta.form || ''
+      ];
+      if(keepMeta) studentsSh.getRange(keepMeta.rowId,1,1,row.length).setValues([row]);
+      else studentsSh.appendRow(row);
+      studentsSh.deleteRow(mergeMeta.rowId);
+    }
+
+    // Families — repoint any membership from mergeId to keepId
+    const famSh = ensureFamiliesSheet();
+    const famRows = famSh.getDataRange().getValues();
+    for(let i=1;i<famRows.length;i++){
+      const ids = parseJsonCell(famRows[i][2], []);
+      if(Array.isArray(ids) && ids.indexOf(mid) >= 0){
+        const next = ids.map(function(x){ return x===mid ? kid : x; });
+        const deduped = next.filter(function(x, idx){ return next.indexOf(x)===idx; });
+        famSh.getRange(i+1,3).setValue(JSON.stringify(deduped));
+      }
+    }
+
+    bumpDataVersion();
+    return { ok:true, casesMoved: casesMoved, sendCasesMoved: sendCasesMoved };
+  });
+}
 
 // ── Families ─────────────────────────────────────────────────────────────
 function familiesHeaders(){ return ['familyId','familyName','studentIds','notes','createdAt','updatedAt']; }
@@ -1140,6 +1223,7 @@ function doPost(e){
       case 'listStudentMeta': return jsonOut(listStudentMeta());
       case 'saveStudentMeta': return jsonOut(saveStudentMetaAction(user, p.studentId, p.familyId, p.notes));
       case 'importStudents': return jsonOut(importStudentsAction(user, p.students));
+      case 'mergeStudents': return jsonOut(mergeStudentsAction(user, p.keepId, p.mergeId, p.keepName));
       case 'listFamilies': return jsonOut(listFamilies());
       case 'saveFamily': return jsonOut(saveFamilyAction(user, p.payload));
       case 'deleteFamily': return jsonOut(deleteFamilyAction(user, p.familyId));
