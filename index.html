@@ -772,6 +772,11 @@ tailwind.config = {
           <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Risk level</h4>
           <select id="caseRisk" onchange="changeRisk()" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-bold">
             <option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select></div>
+          <div id="caseCategoryWrap" class="hidden">
+            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Category of concern</h4>
+            <select id="caseCategorySelect" onchange="changeCategory()" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-bold mb-2"></select>
+            <select id="caseSubcategorySelect" onchange="changeSubcategory()" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-semibold"></select>
+          </div>
           <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Assigned to</h4>
           <div id="caseAssignee" class="flex flex-wrap gap-1.5"></div></div>
           <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Multi-agency referrals</h4>
@@ -2395,6 +2400,12 @@ function openCase(id){
   }
   $('caseStatus').value=c.status;
   $('caseRisk').value=safeRisk(c.risk);
+  // Category changes are manager-only (unlike status/risk, which any
+  // signed-in user with access to the case can change) — the whole block
+  // is hidden rather than just disabled, so it isn't visual clutter for
+  // everyone else.
+  $('caseCategoryWrap').classList.toggle('hidden', !IS_ADMIN());
+  if(IS_ADMIN()) renderCaseCategoryEditor(c);
   renderCaseAssignee(c);
   // agencies
   $('caseAgencies').innerHTML = Object.entries(AGENCIES).map(([key,a])=>{ const on=(c.agencies||[]).includes(key);
@@ -2614,6 +2625,39 @@ function changeRisk(){ const c=DB.cases.find(x=>x.id===activeCaseId); const v=$(
   c.risk=v; c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'status',text:`Risk level changed from ${old} to ${v}.`});
   logAudit('Risk level updated', `${c.studentName} → ${v}`); if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
   persist(); renderCaseHeader(c); renderCaseTimeline(c); renderAll(); toast('Risk level updated'); }
+// Manager-only (see the caseCategoryWrap visibility toggle in openCase()) —
+// unlike status/risk this can reshuffle reporting/analytics buckets, so it's
+// kept narrower than "anyone with access to the case".
+function renderCaseCategoryEditor(c){
+  $('caseCategorySelect').innerHTML = Object.keys(CATEGORIES).map(name=>`<option value="${esc(name)}" ${name===c.category?'selected':''}>${esc(name)}</option>`).join('');
+  renderCaseSubcategoryOptions(c.category, c.subcategory);
+}
+function renderCaseSubcategoryOptions(category, selected){
+  const subs = (CATEGORIES[category]||{}).subs || [];
+  const sel = $('caseSubcategorySelect');
+  if(!subs.length){ sel.innerHTML = '<option value="">No subcategory</option>'; sel.disabled = true; return; }
+  sel.disabled = false;
+  sel.innerHTML = '<option value="">Select nature (optional)…</option>' + subs.map(s=>`<option ${s===selected?'selected':''}>${esc(s)}</option>`).join('');
+}
+function changeCategory(){
+  const c=DB.cases.find(x=>x.id===activeCaseId); if(!c) return;
+  const v=$('caseCategorySelect').value; const old=c.category;
+  if(v===old) return;
+  c.category=v; c.subcategory=''; // the old subcategory belonged to the previous category's own list
+  renderCaseSubcategoryOptions(v, '');
+  c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'status',text:`Category changed from ${old||'—'} to ${v}.`});
+  logAudit('Category updated', `${c.studentName} → ${v}`); if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
+  persist(); renderCaseHeader(c); renderCaseTimeline(c); renderAll(); toast('Category updated');
+}
+function changeSubcategory(){
+  const c=DB.cases.find(x=>x.id===activeCaseId); if(!c) return;
+  const v=$('caseSubcategorySelect').value; const old=c.subcategory||'';
+  if(v===old) return;
+  c.subcategory=v;
+  c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'status',text:`Subcategory changed to ${v||'none'}.`});
+  logAudit('Subcategory updated', `${c.studentName} → ${v||'none'}`); if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
+  persist(); renderCaseHeader(c); renderCaseTimeline(c); renderAll(); toast('Subcategory updated');
+}
 function renderCaseAssignee(c){
   const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(s=>s.trim()).filter(Boolean);
   $('caseAssignee').innerHTML = ASSIGNABLE_ROLES.map(role=>{
