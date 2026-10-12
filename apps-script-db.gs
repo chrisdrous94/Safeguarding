@@ -674,8 +674,15 @@ function notifyMeetingLogged(caseId, studentName, category, department, assignee
 }
 
 // ── SEND case log (SENDCO / DSL / Principal) ────────────────────────────────
+// observationDate/parentMeetingDate/reviewDueDate were appended (not
+// inserted, to keep old rows aligned) so the whole-school report's
+// "Avg. days referral → observation / observation → parent meeting" and
+// "IESP reviews due" figures can be computed live from real per-case dates
+// instead of a DSL typing in a guessed number each month (see
+// computeSendCaseStatsLive in index.html).
 function sendCaseHeaders(){
-  return ['id','studentId','studentName','department','status','needArea','notes','loggedBy','loggedAt','updatedAt'];
+  return ['id','studentId','studentName','department','status','needArea','notes','loggedBy','loggedAt','updatedAt',
+    'observationDate','parentMeetingDate','reviewDueDate'];
 }
 function ensureSendCasesSheet(){ return getOrCreateSheet(SHEET_SEND_CASES, sendCaseHeaders()); }
 function getSendCasesFresh(){
@@ -686,7 +693,8 @@ function getSendCasesFresh(){
     const row = rows[i];
     if(String(row.join('')).trim()==='') continue;
     list.push({ id:row[0], rowId:i+1, studentId:row[1]||'', studentName:row[2]||'', department:row[3]||'',
-      status:row[4]||'', needArea:row[5]||'', notes:row[6]||'', loggedBy:row[7]||'', loggedAt:row[8]||'', updatedAt:row[9]||'' });
+      status:row[4]||'', needArea:row[5]||'', notes:row[6]||'', loggedBy:row[7]||'', loggedAt:row[8]||'', updatedAt:row[9]||'',
+      observationDate:row[10]||'', parentMeetingDate:row[11]||'', reviewDueDate:row[12]||'' });
   }
   return { ok:true, data:list };
 }
@@ -710,7 +718,8 @@ function saveSendCase(sessionUser, payloadJson){
     const now = nowIso();
     const row = [id, norm(p.studentId) || ('sid_' + studentName.replace(/\W/g,'')), studentName, norm(p.department), status,
       norm(p.needArea) || (idx>=0 ? (list[idx].needArea||'') : ''), norm(p.notes),
-      idx>=0 ? (list[idx].loggedBy||loggedByName) : loggedByName, idx>=0 ? (list[idx].loggedAt||now) : now, now];
+      idx>=0 ? (list[idx].loggedBy||loggedByName) : loggedByName, idx>=0 ? (list[idx].loggedAt||now) : now, now,
+      norm(p.observationDate), norm(p.parentMeetingDate), norm(p.reviewDueDate)];
     if(idx >= 0) sh.getRange(list[idx].rowId, 1, 1, row.length).setValues([row]);
     else sh.appendRow(row);
     bumpDataVersion();

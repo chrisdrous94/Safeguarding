@@ -366,6 +366,10 @@ tailwind.config = {
       <div id="vulnBars" class="space-y-3 pt-2"></div>
     </div>
   </div>
+  <div class="bg-card rounded-4xl border border-line shadow-soft p-5 sm:p-6">
+    <h3 class="font-display font-bold text-base text-ink mb-1">Repeat concerns</h3><p class="text-xs text-slate-400 font-medium mb-4">Students with more than one concern logged — often the clearest early-warning signal</p>
+    <div id="repeatConcernsList" class="space-y-2"></div>
+  </div>
 </section>
 
 <!-- ===================== TEACHER HOME ===================== -->
@@ -854,9 +858,12 @@ tailwind.config = {
         <button id="stuDeleteBtn" onclick="deleteStudent()" class="hidden w-full h-10 rounded-full text-xs font-bold text-crit hover:bg-critSoft flex items-center justify-center gap-1.5"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i>Delete student from register</button>
       </div>
       <div class="md:col-span-3 p-5 sm:p-7 bg-surface">
-        <div class="flex items-center justify-between mb-5">
+        <div class="flex items-center justify-between mb-5 gap-2 flex-wrap">
           <h4 class="text-sm font-display font-bold text-ink flex items-center gap-2"><i data-lucide="history" class="w-4 h-4 text-brand"></i>Complete chronology</h4>
-          <button onclick="openChronology(activeStudentId)" class="h-9 px-3.5 rounded-full bg-dim hover:bg-line text-slate-600 text-xs font-bold flex items-center gap-1.5"><i data-lucide="scroll-text" class="w-3.5 h-3.5"></i>Full chronology</button>
+          <div class="flex items-center gap-2">
+            <button onclick="printStudentRecord()" title="Print/export the full student record" class="h-9 px-3.5 rounded-full bg-dim hover:bg-line text-slate-600 text-xs font-bold flex items-center gap-1.5"><i data-lucide="printer" class="w-3.5 h-3.5"></i>Full record</button>
+            <button onclick="openChronology(activeStudentId)" class="h-9 px-3.5 rounded-full bg-dim hover:bg-line text-slate-600 text-xs font-bold flex items-center gap-1.5"><i data-lucide="scroll-text" class="w-3.5 h-3.5"></i>Full chronology</button>
+          </div>
         </div>
         <div id="stuTimeline" class="relative timeline pl-8 space-y-5"></div>
       </div>
@@ -1111,6 +1118,15 @@ tailwind.config = {
         <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Notes (optional)</label>
         <textarea id="scNotes" rows="3" placeholder="Any context for the SENDCo/DSL team…" class="w-full px-4 py-3 rounded-2xl bg-card border border-line text-sm font-medium resize-none"></textarea>
       </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Observation date</label>
+        <input type="date" id="scObservationDate" class="w-full h-11 px-3 rounded-2xl bg-card border border-line text-sm font-semibold text-slate-700"></div>
+        <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Parent meeting date</label>
+        <input type="date" id="scParentMeetingDate" class="w-full h-11 px-3 rounded-2xl bg-card border border-line text-sm font-semibold text-slate-700"></div>
+        <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Next review due</label>
+        <input type="date" id="scReviewDueDate" class="w-full h-11 px-3 rounded-2xl bg-card border border-line text-sm font-semibold text-slate-700"></div>
+      </div>
+      <p class="text-[11px] text-slate-400 font-medium -mt-2">These three dates drive the whole-school report's "Avg. days referral → observation / observation → parent meeting" and "IESP reviews due" figures automatically — leave any blank if not yet known.</p>
     </div>
     <div class="px-5 sm:px-7 py-4 border-t border-line bg-card flex items-center justify-between gap-3">
       <p class="text-[11px] text-slate-400 font-medium hidden sm:block">Visible to SENDCO, DSL and Principal.</p>
@@ -2937,6 +2953,76 @@ function printCase(){
   setTimeout(()=> w.print(), 400);
   logAudit('Case summary printed', c.studentName); persist();
 }
+// Everything on one student as a single document — every case's own summary/
+// actions/chronology/meetings, one after another — for transfers or formal
+// record requests, where printing each case individually would be tedious.
+function printStudentRecord(){
+  const s = studentById(activeStudentId); if(!s) return;
+  const w = window.open('', '', 'width=900,height=800');
+  if(!w){ toast('Pop-up blocked — allow pop-ups to print','error'); return; }
+  const cs = casesForStudent(s.id);
+  const sendEntry = SEND_CASES_LIST.find(x=>x.studentId===s.id);
+  const risk = studentRisk(s.id);
+  const casesHtml = cs.map(c=>{
+    const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(x=>x.trim()).filter(Boolean);
+    const agencyList = Array.isArray(c.agencies) ? c.agencies : String(c.agencies||'').split(',').filter(Boolean);
+    const tl = [...(c.timeline||[])].sort((a,b)=>new Date(b.time)-new Date(a.time));
+    const timelineHtml = tl.map(t=>`<tr><td>${fmtDate(t.time)} ${fmtTime(t.time)}</td><td>${esc(t.author)}</td><td>${esc(t.text)}</td></tr>`).join('');
+    const actionsHtml = (c.actions||[]).map(a=>`<tr><td>${a.done?'Done':'Open'}</td><td>${esc(a.text)}</td><td>${esc(a.owner||'—')}</td><td>${a.due?fmtDate(a.due):'—'}</td></tr>`).join('');
+    const meetingsHtml = (c.meetings||[]).map(m=>`
+      <div class="entry">
+        <h4>${esc(m.title||'Meeting')}</h4>
+        <div class="meta">${fmtDate(m.time)} ${fmtTime(m.time)} · ${esc(m.author)}</div>
+        <p>${esc(m.text).replace(/\n/g,'<br>')}</p>
+        ${(m.attachments&&m.attachments.length) ? `<p style="margin-top:6px;font-size:11px;color:#0d7a6f">Attachments: ${m.attachments.map(a=>`<a href="${esc(a.url)}">${esc(a.name)}</a>`).join(', ')}</p>` : ''}
+      </div>`).join('');
+    return `<div class="case-block">
+      <h2>${esc(c.category)}${c.subcategory?' · '+esc(c.subcategory):''} — ${fmtDate(c.date)}</h2>
+      <div class="meta">
+        <p>Risk: ${esc(c.risk)} · Status: ${esc(c.status)} · Reference: ${esc(c.id.slice(0,8).toUpperCase())}</p>
+        <p>Logged by ${esc(c.reporter||'—')} · Assigned to: ${esc(assigneeList.join(', ')||'Unassigned')}</p>
+        ${agencyList.length ? `<p>Multi-agency referrals: ${agencyList.map(a=>esc((AGENCIES[a]&&AGENCIES[a].label)||a)).join(', ')}</p>` : ''}
+      </div>
+      <p style="font-size:12px">${esc(c.description||'No description provided.').replace(/\n/g,'<br>')}</p>
+      ${actionsHtml ? `<h4>Actions</h4><table><thead><tr><th>Status</th><th>Action</th><th>Owner</th><th>Due</th></tr></thead><tbody>${actionsHtml}</tbody></table>` : ''}
+      ${timelineHtml ? `<h4>Chronology</h4><table><thead><tr><th>Date</th><th>By</th><th>Entry</th></tr></thead><tbody>${timelineHtml}</tbody></table>` : ''}
+      ${meetingsHtml ? `<h4>Meeting minutes</h4>${meetingsHtml}` : ''}
+    </div>`;
+  }).join('');
+  const html = `<!doctype html><html><head><title>Student record - ${esc(s.name)}</title>
+    <style>
+      body{font-family:Arial,sans-serif;margin:20px;color:#0f1b1a}
+      h1{color:#0d7a6f;border-bottom:3px solid #0d7a6f;padding-bottom:10px}
+      h2{color:#0a5b53;margin-top:22px;font-size:15px;border-bottom:1px solid #eee;padding-bottom:4px}
+      h4{color:#0a5b53;margin:10px 0 4px 0;font-size:12px}
+      .meta{color:#666;font-size:12px;margin-bottom:16px}
+      .meta p{margin:2px 0}
+      table{width:100%;border-collapse:collapse;margin-top:6px}
+      th,td{border:1px solid #ddd;padding:6px 8px;font-size:11px;text-align:left;vertical-align:top}
+      th{background:#0d7a6f;color:#fff}
+      tr:nth-child(even){background:#f9f9f9}
+      .case-block{border-top:2px solid #0d7a6f;padding-top:14px;margin-top:20px}
+      .entry{border:1px solid #ddd;border-radius:8px;padding:10px;margin-bottom:10px}
+      .entry h4{margin:0 0 4px 0}
+      .entry .meta{margin:0 0 6px 0}
+      .entry p{margin:0;font-size:12px;white-space:pre-wrap}
+      .footer{margin-top:24px;padding-top:12px;border-top:1px solid #ddd;color:#666;font-size:11px}
+    </style></head><body>
+    ${PRINT_LOGO_HTML}
+    <h1>Student record — ${esc(s.name)}</h1>
+    <div class="meta">
+      <p><strong>${esc(s.year||'—')}${s.form&&s.form!=='—'?' · '+esc(s.form):''}</strong> · Current risk: ${esc(risk.label)} · ${cs.length} concern${cs.length!==1?'s':''} on record</p>
+      <p>Vulnerable groups: ${(s.flags||[]).length ? (s.flags||[]).map(f=>esc((FLAGS[f]&&FLAGS[f].label)||f)).join(', ') : 'None recorded'}</p>
+      ${sendEntry ? `<p>SEND status: ${esc(sendStatusLabel(sendEntry.status))}${sendEntry.needArea?' · '+esc(sendNeedLabel(sendEntry.needArea)):''}</p>` : ''}
+      <p>Prepared by: ${esc(ME.name)} (${esc(ME.role)}) · Generated: ${new Date().toLocaleString()}</p>
+    </div>
+    ${casesHtml || '<p>No concerns logged for this student.</p>'}
+    <div class="footer"><p>This record is confidential and intended for safeguarding purposes only.</p><p>Generated by I CAN School Safeguarding Platform</p></div>
+    </body></html>`;
+  w.document.open(); w.document.write(html); w.document.close();
+  setTimeout(()=> w.print(), 400);
+  logAudit('Student record printed', s.name); persist();
+}
 // Fully removes a student: their concern cases, their SEND register entry (feeds the
 // whole-school Overview Summary) and the student record itself, so nothing about them
 // lingers in any report once deleted.
@@ -3111,7 +3197,31 @@ async function renderAnalytics(){
     return `<div><div class="flex justify-between text-xs font-bold mb-1"><span class="text-slate-600">${k.full}</span><span class="text-slate-400">${vg[f]}</span></div>
     <div class="h-2.5 rounded-full bg-dim overflow-hidden"><div class="h-full rounded-full bg-${k.color}" style="width:${Math.round(vg[f]/max*100)}%"></div></div></div>`; }).join('')
     : emptyState('shield-check','No intersections','');
+
+  renderRepeatConcerns();
   icons();
+}
+// Ranked "which students have the most concerns logged" — the rest of this
+// view uses DB.cases (every case school-wide, for every role that can see
+// this nav item, which isn't role-restricted). Named per-student rankings
+// are more sensitive than aggregate charts, so this deliberately scopes to
+// visibleCases() instead — a non-admin only sees this ranked among cases
+// they're actually allowed to see.
+function renderRepeatConcerns(){
+  const el = $('repeatConcernsList'); if(!el) return;
+  const cs = visibleCases();
+  const counts = {};
+  cs.forEach(c=>{ if(c.studentId) counts[c.studentId] = (counts[c.studentId]||0) + 1; });
+  const ranked = Object.entries(counts).filter(([,n])=>n>1).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  el.innerHTML = ranked.length ? ranked.map(([sid,n])=>{
+    const s = studentById(sid);
+    const name = s ? s.name : ((cs.find(c=>c.studentId===sid)||{}).studentName || 'Unknown');
+    const open = casesForStudent(sid).filter(isOpen).length;
+    return `<button onclick="openStudent('${sid}')" class="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-2xl border border-line hover:bg-dim/40 transition-colors text-left">
+      <span class="min-w-0 flex items-center gap-2"><span class="font-bold text-ink text-sm truncate">${esc(name)}</span>${open?`<span class="shrink-0 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-critSoft text-crit">${open} open</span>`:''}</span>
+      <span class="shrink-0 text-sm font-extrabold text-brand">${n}</span>
+    </button>`;
+  }).join('') : emptyState('users-round','No repeat concerns','No student currently has more than one concern logged.');
 }
 
 // ---------- SEND & Safeguarding whole-school dashboard (Principal + DSL) ----------
@@ -3394,8 +3504,35 @@ function computeSendNeedsProfileLive(end){
   const out = {}; SR_NEEDS_PROFILE.forEach(n=>{ out[n.key] = sets[n.key].size; });
   return out;
 }
-// Overwrites the live-computed keys on SEND_REPORT.overview/needs in place, so
-// every consumer (report table, CSV/PDF export, edit modal) stays in sync automatically.
+// Computes the three "Key statistics" numbers that used to be a DSL's guess
+// each month, from the observationDate/parentMeetingDate/reviewDueDate now
+// captured on each SEND case log entry (see sendCaseModal). Same "as of the
+// end of the selected period" cumulative treatment as computeSendOverviewLive
+// for the two averages (a case logged after the period hasn't happened yet
+// from that report's point of view); reviews due is strictly bounded to the
+// period since it's asking "due within this window", not "as of it".
+function computeSendCaseStatsLive(start, end){
+  const refToObs = [], obsToParent = [];
+  let reviewsDue = 0;
+  SEND_CASES_LIST.forEach(c=>{
+    const loggedT = c.loggedAt ? new Date(c.loggedAt).getTime() : NaN;
+    if(!isNaN(loggedT) && loggedT > end.getTime()) return; // not "as of" this period yet
+    if(c.loggedAt && c.observationDate){
+      const d = daysBetween(c.loggedAt, c.observationDate);
+      if(!isNaN(d) && d>=0) refToObs.push(d);
+    }
+    if(c.observationDate && c.parentMeetingDate){
+      const d = daysBetween(c.observationDate, c.parentMeetingDate);
+      if(!isNaN(d) && d>=0) obsToParent.push(d);
+    }
+    if(c.reviewDueDate && inWindow(c.reviewDueDate, start, end)) reviewsDue++;
+  });
+  const avg = arr => arr.length ? (arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(1) : '';
+  return { avgReferralToObs: avg(refToObs), avgObsToParent: avg(obsToParent), iepReviewsDue: String(reviewsDue) };
+}
+// Overwrites the live-computed keys on SEND_REPORT.overview/needs/stats in
+// place, so every consumer (report table, CSV/PDF export, edit modal) stays
+// in sync automatically.
 async function applyLiveSendOverview(force){
   await loadSendCasesData(force);
   const { start, end } = getSrWindow();
@@ -3403,6 +3540,7 @@ async function applyLiveSendOverview(force){
   Object.keys(live).forEach(k=>{ SEND_REPORT.overview[k] = live[k]; });
   const needsLive = computeSendNeedsProfileLive(end);
   Object.keys(needsLive).forEach(k=>{ SEND_REPORT.needs[k] = needsLive[k]; });
+  Object.assign(SEND_REPORT.stats, computeSendCaseStatsLive(start, end));
 }
 function sendStatusLabel(key){
   return (SEND_CASE_STATUSES.find(f=>f.key===key)||{}).label || key;
@@ -3421,6 +3559,9 @@ function prefillSendCaseFields(){
   $('scDepartment').value = entry.department || 'Primary';
   $('scNeedArea').value = entry.needArea || '';
   $('scNotes').value = entry.notes || '';
+  $('scObservationDate').value = entry.observationDate || '';
+  $('scParentMeetingDate').value = entry.parentMeetingDate || '';
+  $('scReviewDueDate').value = entry.reviewDueDate || '';
   pickSendStatus(entry.status);
 }
 async function openSendCaseModal(prefillName){
@@ -3431,6 +3572,9 @@ async function openSendCaseModal(prefillName){
   $('scNeedArea').innerHTML = '<option value="">Not specified</option>' + SR_NEEDS_PROFILE.map(n=>`<option value="${n.key}">${esc(n.label)}</option>`).join('');
   $('scNeedArea').value = '';
   $('scNotes').value = '';
+  $('scObservationDate').value = '';
+  $('scParentMeetingDate').value = '';
+  $('scReviewDueDate').value = '';
   $('scStatus').value = '';
   $('scStatusGrid').innerHTML = SEND_CASE_STATUSES.map(f=>`
     <button type="button" data-status="${f.key}" onclick="pickSendStatus('${f.key}')" class="scstatus text-left px-4 h-12 rounded-2xl border-2 border-line bg-card text-sm font-bold text-slate-700 hover:border-brand/40 hover:bg-dim/40 transition-colors">${esc(f.label)}</button>`).join('');
@@ -3461,7 +3605,10 @@ async function submitSendCase(){
     studentId, studentName:name,
     department: $('scDepartment').value || 'Primary',
     status, needArea: $('scNeedArea').value || '',
-    notes: $('scNotes').value.trim()
+    notes: $('scNotes').value.trim(),
+    observationDate: $('scObservationDate').value || '',
+    parentMeetingDate: $('scParentMeetingDate').value || '',
+    reviewDueDate: $('scReviewDueDate').value || ''
   };
   try{
     const res = await scriptCall('saveSendCase', { payload: JSON.stringify(payload) });
@@ -3978,11 +4125,11 @@ async function openSendReportEdit(){
     <div class="bg-card rounded-2xl border border-line p-4 space-y-3">
       <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Key statistics</h4>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div><label class="block text-xs font-bold text-slate-600 mb-1">Avg. days referral → observation</label><input type="number" min="0" id="sr_stat_avgReferralToObs" value="${esc(s.stats.avgReferralToObs)}" class="w-full h-10 px-3 rounded-xl bg-dim border border-transparent text-sm font-semibold"></div>
-        <div><label class="block text-xs font-bold text-slate-600 mb-1">Avg. days observation → parent meeting</label><input type="number" min="0" id="sr_stat_avgObsToParent" value="${esc(s.stats.avgObsToParent)}" class="w-full h-10 px-3 rounded-xl bg-dim border border-transparent text-sm font-semibold"></div>
-        <div><label class="block text-xs font-bold text-slate-600 mb-1">IESP reviews due this month</label><input type="number" min="0" id="sr_stat_iepReviewsDue" value="${esc(s.stats.iepReviewsDue)}" class="w-full h-10 px-3 rounded-xl bg-dim border border-transparent text-sm font-semibold"></div>
+        <div><label class="block text-xs font-bold text-slate-600 mb-1">Avg. days referral → observation</label><div class="h-10 px-3 rounded-xl bg-dim/60 flex items-center text-sm font-semibold text-slate-500">${esc(s.stats.avgReferralToObs)||'—'}</div></div>
+        <div><label class="block text-xs font-bold text-slate-600 mb-1">Avg. days observation → parent meeting</label><div class="h-10 px-3 rounded-xl bg-dim/60 flex items-center text-sm font-semibold text-slate-500">${esc(s.stats.avgObsToParent)||'—'}</div></div>
+        <div><label class="block text-xs font-bold text-slate-600 mb-1">IESP reviews due this month</label><div class="h-10 px-3 rounded-xl bg-dim/60 flex items-center text-sm font-semibold text-slate-500">${esc(s.stats.iepReviewsDue)||'0'}</div></div>
       </div>
-      <p class="text-[11px] text-slate-400 font-medium">Safeguarding cases requiring monitoring and staff referrals this month are calculated live and don't need entering here.</p>
+      <p class="text-[11px] text-slate-400 font-medium">All calculated automatically — the three above from the observation/parent-meeting/review dates entered on each SEND case, and cases requiring monitoring / staff referrals this month from live case data. Nothing here needs entering.</p>
     </div>
     <div class="bg-card rounded-2xl border border-line p-4 space-y-3">
       <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Principal summary</h4>
@@ -4003,10 +4150,7 @@ async function saveSendReportEdit(){
     };
   });
   SR_REFERRAL_SOURCES.forEach(r=>{ s.referrals[r.key] = Math.max(0, Number($(`sr_ref_${r.key}`).value)||0); });
-  // needs profile is calculated live from the SEND case log — nothing to read from inputs
-  s.stats.avgReferralToObs = $('sr_stat_avgReferralToObs').value.trim();
-  s.stats.avgObsToParent = $('sr_stat_avgObsToParent').value.trim();
-  s.stats.iepReviewsDue = $('sr_stat_iepReviewsDue').value.trim();
+  // needs profile and all three key statistics are calculated live — nothing to read from inputs
   s.summary.strengths = $('sr_sum_strengths').value.trim();
   s.summary.concerns = $('sr_sum_concerns').value.trim();
   s.summary.priorities = $('sr_sum_priorities').value.trim();
@@ -4664,8 +4808,15 @@ function notifyMeetingLogged(caseId, studentName, category, department, assignee
 }
 
 // ── SEND case log (SENDCO / DSL / Principal) ────────────────────────────────
+// observationDate/parentMeetingDate/reviewDueDate were appended (not
+// inserted, to keep old rows aligned) so the whole-school report's
+// "Avg. days referral → observation / observation → parent meeting" and
+// "IESP reviews due" figures can be computed live from real per-case dates
+// instead of a DSL typing in a guessed number each month (see
+// computeSendCaseStatsLive in index.html).
 function sendCaseHeaders(){
-  return ['id','studentId','studentName','department','status','needArea','notes','loggedBy','loggedAt','updatedAt'];
+  return ['id','studentId','studentName','department','status','needArea','notes','loggedBy','loggedAt','updatedAt',
+    'observationDate','parentMeetingDate','reviewDueDate'];
 }
 function ensureSendCasesSheet(){ return getOrCreateSheet(SHEET_SEND_CASES, sendCaseHeaders()); }
 function getSendCasesFresh(){
@@ -4676,7 +4827,8 @@ function getSendCasesFresh(){
     const row = rows[i];
     if(String(row.join('')).trim()==='') continue;
     list.push({ id:row[0], rowId:i+1, studentId:row[1]||'', studentName:row[2]||'', department:row[3]||'',
-      status:row[4]||'', needArea:row[5]||'', notes:row[6]||'', loggedBy:row[7]||'', loggedAt:row[8]||'', updatedAt:row[9]||'' });
+      status:row[4]||'', needArea:row[5]||'', notes:row[6]||'', loggedBy:row[7]||'', loggedAt:row[8]||'', updatedAt:row[9]||'',
+      observationDate:row[10]||'', parentMeetingDate:row[11]||'', reviewDueDate:row[12]||'' });
   }
   return { ok:true, data:list };
 }
@@ -4700,7 +4852,8 @@ function saveSendCase(sessionUser, payloadJson){
     const now = nowIso();
     const row = [id, norm(p.studentId) || ('sid_' + studentName.replace(/\\W/g,'')), studentName, norm(p.department), status,
       norm(p.needArea) || (idx>=0 ? (list[idx].needArea||'') : ''), norm(p.notes),
-      idx>=0 ? (list[idx].loggedBy||loggedByName) : loggedByName, idx>=0 ? (list[idx].loggedAt||now) : now, now];
+      idx>=0 ? (list[idx].loggedBy||loggedByName) : loggedByName, idx>=0 ? (list[idx].loggedAt||now) : now, now,
+      norm(p.observationDate), norm(p.parentMeetingDate), norm(p.reviewDueDate)];
     if(idx >= 0) sh.getRange(list[idx].rowId, 1, 1, row.length).setValues([row]);
     else sh.appendRow(row);
     bumpDataVersion();
