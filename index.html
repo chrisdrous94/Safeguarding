@@ -540,9 +540,14 @@ tailwind.config = {
       <h2 class="font-display font-bold text-lg text-ink">User management</h2>
       <p class="text-xs text-slate-400 font-medium mt-0.5">Create access codes and manage who can use the platform</p>
     </div>
-    <button onclick="openCreateUser()" class="h-11 px-5 rounded-full bg-brand hover:bg-brandDark text-white text-sm font-bold flex items-center gap-2 shadow-soft transition-colors">
-      <i data-lucide="user-plus" class="w-4 h-4"></i><span class="hidden sm:inline">Create user</span>
-    </button>
+    <div class="flex items-center gap-2">
+      <button onclick="openRoleLabelsModal()" class="h-11 px-5 rounded-full bg-card border border-line hover:bg-dim text-slate-600 text-sm font-bold flex items-center gap-2 transition-colors">
+        <i data-lucide="tag" class="w-4 h-4"></i><span class="hidden sm:inline">Rename roles</span>
+      </button>
+      <button onclick="openCreateUser()" class="h-11 px-5 rounded-full bg-brand hover:bg-brandDark text-white text-sm font-bold flex items-center gap-2 shadow-soft transition-colors">
+        <i data-lucide="user-plus" class="w-4 h-4"></i><span class="hidden sm:inline">Create user</span>
+      </button>
+    </div>
   </div>
   <div class="bg-card rounded-4xl border border-line shadow-soft overflow-hidden">
     <div class="px-5 py-3 border-b border-line bg-dim/30 grid grid-cols-[1fr_auto_auto_auto_auto] sm:grid-cols-[1fr_120px_80px_auto] gap-3 items-center">
@@ -836,6 +841,20 @@ tailwind.config = {
   </div>
 </div>
 
+<!-- ===================== STUDENT-LEVEL MEETING MINUTES (all cases combined) ===================== -->
+<div id="studentMeetingsModal" onclick="if(event.target===this)closeModal('studentMeetingsModal')" class="fixed inset-0 z-[110] hidden bg-ink/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 transition-opacity">
+  <div class="bg-surface w-full sm:max-w-3xl sm:rounded-5xl rounded-t-4xl shadow-lift max-h-[94vh] sm:max-h-[90vh] flex flex-col pop">
+    <div class="px-5 sm:px-7 py-4 sm:py-5 flex items-center justify-between border-b border-line bg-card sm:rounded-t-5xl rounded-t-4xl">
+      <div class="flex items-center gap-3"><div class="w-10 h-10 rounded-2xl bg-brandSoft text-onBrandSoft grid place-items-center"><i data-lucide="notebook-pen" class="w-5 h-5"></i></div>
+      <div><h3 class="font-display font-bold text-ink">All meeting minutes</h3><p id="studentMeetingsModalSub" class="text-[11px] text-slate-400 font-medium">Combined across every concern for this student</p></div></div>
+      <button onclick="closeModal('studentMeetingsModal')" class="w-9 h-9 grid place-items-center rounded-full hover:bg-dim text-slate-500"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>
+    <div class="overflow-y-auto scroll-thin px-5 sm:px-7 py-5 space-y-2 flex-1">
+      <div id="studentMeetingsList" class="space-y-2"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ===================== STUDENT 360 MODAL ===================== -->
 <div id="studentModal" onclick="if(event.target===this)closeModal('studentModal')" class="fixed inset-0 z-[100] hidden bg-ink/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 transition-opacity">
   <div class="bg-surface w-full sm:max-w-4xl sm:rounded-5xl rounded-t-4xl shadow-lift max-h-[95vh] flex flex-col pop overflow-hidden">
@@ -883,8 +902,7 @@ tailwind.config = {
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div><label class="block text-xs font-bold text-slate-600 mb-1.5">Name</label><input id="setName" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-medium"></div>
           <div><label class="block text-xs font-bold text-slate-600 mb-1.5">Role</label>
-          <select id="setRole" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-bold">
-            <option>Lead DSL</option><option>Deputy DSL</option><option>Head of Primary</option><option>Head of Secondary</option><option>Head of Extra</option><option>Principal</option><option>SENDCO</option><option>Pastoral Lead</option><option>Teacher</option></select></div>
+          <select id="setRole" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-bold"></select></div>
         </div>
         <p class="text-[11px] text-slate-400 font-medium">Teachers, SENDCO and Deputy DSLs see concerns assigned to them, reported by them, and all concerns linked to students assigned to them. Head of Primary/Head of Secondary see all cases for students in their phase. Head of Extra sees all cases across both phases. Lead DSL and Principal see all cases and the whole-school dashboard.</p>
       </div>
@@ -1039,17 +1057,7 @@ tailwind.config = {
       </div>
       <div>
         <label class="block text-xs font-bold text-slate-600 mb-1.5">Role</label>
-        <select id="uRole" class="w-full h-11 px-3 rounded-xl bg-card border border-line text-sm font-bold text-slate-700">
-          <option value="Teacher">Teacher</option>
-          <option value="SENDCO">SENDCO</option>
-          <option value="Pastoral Lead">Pastoral Lead</option>
-          <option value="Deputy DSL">Deputy DSL</option>
-          <option value="Lead DSL">Lead DSL</option>
-          <option value="Head of Primary">Head of Primary</option>
-          <option value="Head of Secondary">Head of Secondary</option>
-          <option value="Head of Extra">Head of Extra</option>
-          <option value="Principal">Principal</option>
-        </select>
+        <select id="uRole" class="w-full h-11 px-3 rounded-xl bg-card border border-line text-sm font-bold text-slate-700"></select>
       </div>
       <div>
         <label class="block text-xs font-bold text-slate-600 mb-1.5">Email</label>
@@ -1061,6 +1069,22 @@ tailwind.config = {
     <div class="flex justify-end gap-2 mt-5">
       <button onclick="closeModal('userModal')" class="h-11 px-5 rounded-full text-sm font-bold text-slate-600 hover:bg-dim">Cancel</button>
       <button onclick="saveUser()" class="h-11 px-6 rounded-full bg-brand hover:bg-brandDark text-white text-sm font-bold shadow-soft">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== RENAME ROLES MODAL ===================== -->
+<div id="roleLabelsModal" onclick="if(event.target===this)closeModal('roleLabelsModal')" class="fixed inset-0 z-[110] hidden bg-ink/50 backdrop-blur-sm flex items-center justify-center p-4 opacity-0 transition-opacity">
+  <div class="bg-surface w-full max-w-md rounded-4xl shadow-lift p-6 pop max-h-[85vh] flex flex-col">
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="font-display font-bold text-ink">Rename roles</h3>
+      <button onclick="closeModal('roleLabelsModal')" class="w-9 h-9 grid place-items-center rounded-full hover:bg-dim text-slate-500"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>
+    <p class="text-[11px] text-slate-400 font-medium mb-4">Changes only what each role is called — what each one can do, and every existing account/case, is unaffected. Leave blank to reset to the default name.</p>
+    <div id="roleLabelsList" class="space-y-2.5 overflow-y-auto scroll-thin flex-1"></div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal('roleLabelsModal')" class="h-11 px-5 rounded-full text-sm font-bold text-slate-600 hover:bg-dim">Cancel</button>
+      <button onclick="saveRoleLabelsEdit()" id="saveRoleLabelsBtn" class="h-11 px-6 rounded-full bg-brand hover:bg-brandDark text-white text-sm font-bold shadow-soft">Save</button>
     </div>
   </div>
 </div>
@@ -1599,7 +1623,7 @@ function setSource(s){
 }
 function openSettingsModal(){
   if($('setName')) $('setName').value=ME.name;
-  if($('setRole')) $('setRole').value=ME.role;
+  if($('setRole')){ $('setRole').innerHTML = roleOptionsHtml(); $('setRole').value=ME.role; }
   openModal('settingsModal');
 }
 async function saveSettings(){
@@ -1674,7 +1698,7 @@ async function submitPasswordChange(){
 }
 // resetDemo removed for production
 function paintUser(){
-  $('userName').textContent=ME.name; $('userRole').textContent=ME.role;
+  $('userName').textContent=ME.name; $('userRole').textContent=roleLabel(ME.role);
   $('userAvatar').textContent=initials(ME.name);
 }
 
@@ -1691,6 +1715,21 @@ function safeDate(v){
 let DATA_VERSION = 0;
 let STUDENT_META = {}; // studentId -> { familyId, notes, name, year, form } — see saveStudentMeta/importStudentsAction
 let FAMILIES = []; // { familyId, familyName, studentIds[], notes } — see loadFamilies / Work Item 5
+// roleKey -> custom display name (see getRoleLabels/saveRoleLabelsAction). Every
+// role===/includes() comparison in this file still uses the raw key — ONLY
+// display text should ever go through roleLabel() below.
+let ROLE_LABELS = {};
+function roleLabel(key){ return ROLE_LABELS[key] || key; }
+// Shared by every role <select> (uRole, setRole) — value stays the raw
+// permission key, only the visible text follows the custom label.
+function roleOptionsHtml(){ return ASSIGNABLE_ROLES.map(r=>`<option value="${esc(r)}">${esc(roleLabel(r))}</option>`).join(''); }
+async function loadRoleLabels(){
+  if(!CAN_USE_APPS_SCRIPT()) return;
+  try{
+    const res = await scriptCall('getRoleLabels', {});
+    if(res && res.ok) ROLE_LABELS = res.labels || {};
+  }catch(e){ /* non-fatal — role names just show their default until next load */ }
+}
 
 async function syncData(){
   if(SOURCE!=='live' || !SCRIPT_URL){ renderAll(); toast('Refreshed','info'); return; }
@@ -1731,6 +1770,7 @@ async function syncData(){
     });
     rebuildStudentsFromCases();
     await loadStudentMeta();
+    await loadRoleLabels();
     if(typeof data.version === 'number') DATA_VERSION = data.version;
     persist();
     renderAll(); toast('Synced with Google Sheet');
@@ -2328,10 +2368,14 @@ async function postLive(body){
 // ring color) after an edit, without re-running all of openCase()'s other
 // work (body map, SEND fetch, etc).
 function renderCaseHeader(c){
+  const mCount = (c.meetings||[]).length;
   $('caseHeader').innerHTML = `<div class="flex items-center gap-3 min-w-0">${avatar(c.studentName,'w-12 h-12',c.risk)}
     <div class="min-w-0"><div class="flex items-center gap-2 flex-wrap"><button onclick="openStudent('${c.studentId}')" class="font-display font-bold text-lg text-ink hover:text-brand truncate">${esc(c.studentName)}</button>${riskBadge(c.risk)}</div>
     <div class="text-xs font-semibold text-slate-400 flex items-center gap-1.5"><i data-lucide="${catIcon(c.category)}" class="w-3.5 h-3.5"></i>${esc(c.category)}${c.subcategory?' · '+esc(c.subcategory):''} · ${esc(c.year)}</div></div></div>
-    <button onclick="closeModal('caseModal')" class="w-9 h-9 grid place-items-center rounded-full hover:bg-dim text-slate-500 shrink-0"><i data-lucide="x" class="w-5 h-5"></i></button>`;
+    <div class="flex items-center gap-1 shrink-0">
+      <button onclick="openCaseMeetingsModal()" title="Meeting minutes" class="relative w-9 h-9 grid place-items-center rounded-full hover:bg-dim text-slate-500"><i data-lucide="notebook-pen" class="w-5 h-5"></i>${mCount?`<span class="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-brand text-white text-[9px] font-extrabold grid place-items-center leading-none">${mCount}</span>`:''}</button>
+      <button onclick="closeModal('caseModal')" class="w-9 h-9 grid place-items-center rounded-full hover:bg-dim text-slate-500"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>`;
   icons();
 }
 function openCase(id){
@@ -2576,7 +2620,7 @@ function renderCaseAssignee(c){
     const on = assigneeList.includes(role);
     const safe = role.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     return `<button type="button" onclick="toggleAssignee('${safe}')" class="inline-flex items-center gap-1 pl-2.5 pr-2 h-7 rounded-full border-2 text-[11px] font-bold transition-colors ${on?'border-brand bg-brandSoft text-brandDark':'border-line bg-card text-slate-600'} hover:border-brand/40">
-      ${esc(role)}<i data-lucide="${on?'check':'plus'}" class="w-3 h-3 ${on?'text-brandDark':'text-slate-300'}"></i></button>`;
+      ${esc(roleLabel(role))}<i data-lucide="${on?'check':'plus'}" class="w-3 h-3 ${on?'text-brandDark':'text-slate-300'}"></i></button>`;
   }).join('');
   icons();
 }
@@ -2716,9 +2760,13 @@ function openStudent(id){
   activeStudentId=id; const s=studentById(id); if(!s) return;
   closeModal('caseModal');
   const cs=casesForStudent(id); const open=cs.filter(isOpen).length; const r=studentRisk(id);
+  const mTotal = cs.reduce((n,c)=> n + (c.meetings||[]).length, 0);
   $('stuHeader').innerHTML=`<div class="flex items-center gap-3"><div class="w-12 h-12 rounded-full bg-white/15 grid place-items-center font-display font-extrabold text-lg">${initials(s.name)}</div>
     <div><h3 class="font-display font-bold text-lg">${esc(s.name)}</h3><p class="text-xs font-medium text-white/60">${esc(s.year)} · ${esc(s.form)} · DOB ${s.dob?fmtDate(s.dob):'—'}</p></div></div>
-    <button onclick="closeModal('studentModal')" class="w-9 h-9 grid place-items-center rounded-full hover:bg-white/15 text-white/80"><i data-lucide="x" class="w-5 h-5"></i></button>`;
+    <div class="flex items-center gap-1 shrink-0">
+      <button onclick="openStudentMeetingsModal()" title="Meeting minutes" class="relative w-9 h-9 grid place-items-center rounded-full hover:bg-white/15 text-white/80"><i data-lucide="notebook-pen" class="w-5 h-5"></i>${mTotal?`<span class="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-brand text-white text-[9px] font-extrabold grid place-items-center leading-none">${mTotal}</span>`:''}</button>
+      <button onclick="closeModal('studentModal')" class="w-9 h-9 grid place-items-center rounded-full hover:bg-white/15 text-white/80"><i data-lucide="x" class="w-5 h-5"></i></button>
+    </div>`;
   $('stuRisk').textContent=r.label; $('stuRisk').className=`font-display font-extrabold text-2xl text-${r.color}`;
   $('stuFlags').innerHTML=(s.flags||[]).map(flagChip).join('')||'<span class="text-xs text-slate-400 italic">None recorded</span>';
   const ag=new Set(); cs.forEach(c=>(c.agencies||[]).forEach(a=>ag.add(a)));
@@ -2747,6 +2795,36 @@ function openStudent(id){
   openModal('studentModal'); icons();
 }
 function reportForCurrentStudent(){ const s=studentById(activeStudentId); closeModal('studentModal'); setTimeout(()=>openReport(s.name),220); }
+// All meeting minutes across every one of this student's cases, combined —
+// meetings only ever live on a case (c.meetings), so this flattens and
+// re-sorts them student-wide rather than requiring a separate per-case open
+// to find them. View-only here; adding a new entry still happens on the
+// specific case (openCase() → openCaseMeetingsModal()) since a minute has to
+// belong to one case record.
+function openStudentMeetingsModal(){
+  const s = studentById(activeStudentId); if(!s) return;
+  renderStudentMeetings(s);
+  openModal('studentMeetingsModal'); icons();
+}
+function renderStudentMeetings(s){
+  const cs = casesForStudent(s.id);
+  const all = [];
+  cs.forEach(c=> (c.meetings||[]).forEach(m=> all.push(Object.assign({}, m, { caseId:c.id, caseCategory:c.category, caseSubcategory:c.subcategory }))));
+  all.sort((a,b)=> new Date(b.time)-new Date(a.time));
+  const subEl = $('studentMeetingsModalSub');
+  if(subEl) subEl.textContent = `${s.name} — ${all.length} across ${cs.length} concern${cs.length!==1?'s':''}`;
+  $('studentMeetingsList').innerHTML = all.length ? all.map(m=>`
+    <div class="bg-card rounded-2xl border border-line p-3">
+      <div class="flex items-center justify-between gap-2 mb-1">
+        <span class="text-sm font-bold text-ink">${esc(m.title||'Meeting')}</span>
+        <button onclick="closeModal('studentMeetingsModal'); openCase('${m.caseId}')" class="text-[11px] font-bold text-brand hover:text-brandDark shrink-0">View case</button>
+      </div>
+      <div class="text-[11px] font-semibold text-slate-400 mb-1.5">${fmtDate(m.time)} ${fmtTime(m.time)} · ${esc(m.author)} · ${esc(m.caseCategory)}${m.caseSubcategory?' · '+esc(m.caseSubcategory):''}</div>
+      <p class="text-xs text-slate-600 font-medium whitespace-pre-wrap">${esc(m.text)}</p>
+      ${(m.attachments&&m.attachments.length) ? `<div class="flex flex-wrap gap-1.5 mt-2">${m.attachments.map(a=>`<a href="${esc(a.url)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-1 rounded-lg bg-dim text-slate-600 hover:bg-line"><i data-lucide="${attachmentIcon(a.mimeType)}" class="w-3.5 h-3.5"></i>${esc(a.name)}<span class="text-slate-400 font-medium">${fmtBytes(a.size)}</span></a>`).join('')}</div>` : ''}
+    </div>`).join('') : '<p class="text-xs text-slate-400 font-medium italic">No meeting minutes logged for this student yet.</p>';
+  icons();
+}
 
 // ---------- FULL CHRONOLOGY (Work Item 4) ----------
 // A date-sorted merge of everything held on one child across all their
@@ -2849,7 +2927,7 @@ function printChronology(){
     ${PRINT_LOGO_HTML}
     <h1>Full chronology — ${esc(s.name)}</h1>
     <div class="meta"><p><strong>${esc(s.year||'')} ${esc(s.form?('· '+s.form):'')}</strong></p>
-      <p>Prepared by: ${esc(ME.name)} (${esc(ME.role)})</p><p>Generated: ${new Date().toLocaleString()}</p></div>
+      <p>Prepared by: ${esc(ME.name)} (${esc(roleLabel(ME.role))})</p><p>Generated: ${new Date().toLocaleString()}</p></div>
     <table><thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Risk</th><th>Status</th><th>Recorded by</th><th>Details</th></tr></thead><tbody>${rowsHtml||'<tr><td colspan="7">No entries</td></tr>'}</tbody></table>
     <div class="footer"><p>This chronology is confidential and intended for safeguarding purposes only.</p><p>Generated by I CAN School Safeguarding Platform</p></div>
     </body></html>`;
@@ -2887,7 +2965,7 @@ function printCaseMeetings(){
     ${PRINT_LOGO_HTML}
     <h1>Meeting minutes — ${esc(c.studentName)}</h1>
     <div class="meta"><p><strong>Case reference: ${esc(c.id.slice(0,8).toUpperCase())}</strong> · ${esc(c.category)}</p>
-      <p>Prepared by: ${esc(ME.name)} (${esc(ME.role)})</p><p>Generated: ${new Date().toLocaleString()}</p></div>
+      <p>Prepared by: ${esc(ME.name)} (${esc(roleLabel(ME.role))})</p><p>Generated: ${new Date().toLocaleString()}</p></div>
     ${entriesHtml || '<p>No meeting minutes logged for this case.</p>'}
     <div class="footer"><p>This record is confidential and intended for safeguarding purposes only.</p><p>Generated by I CAN School Safeguarding Platform</p></div>
     </body></html>`;
@@ -2938,7 +3016,7 @@ function printCase(){
       <p>Year: ${esc(c.year||'—')} · Class: ${esc(c.studentClass||'—')} · Department: ${esc(c.department||'—')}</p>
       <p>Logged: ${fmtDate(c.date)} by ${esc(c.reporter||'—')} · Location: ${esc(c.location||'—')} · Reference: ${esc(c.id.slice(0,8).toUpperCase())}</p>
       <p>Assigned to: ${esc(assigneeList.join(', ')||'Unassigned')}</p>
-      <p>Prepared by: ${esc(ME.name)} (${esc(ME.role)}) · Generated: ${new Date().toLocaleString()}</p>
+      <p>Prepared by: ${esc(ME.name)} (${esc(roleLabel(ME.role))}) · Generated: ${new Date().toLocaleString()}</p>
     </div>
     <h2>Description</h2><p style="font-size:12px">${esc(c.description||'No description provided.').replace(/\n/g,'<br>')}</p>
     ${agencyList.length ? `<h2>Multi-agency referrals</h2><ul>${agencyList.map(a=>`<li>${esc((AGENCIES[a]&&AGENCIES[a].label)||a)}</li>`).join('')}</ul>` : ''}
@@ -3014,7 +3092,7 @@ function printStudentRecord(){
       <p><strong>${esc(s.year||'—')}${s.form&&s.form!=='—'?' · '+esc(s.form):''}</strong> · Current risk: ${esc(risk.label)} · ${cs.length} concern${cs.length!==1?'s':''} on record</p>
       <p>Vulnerable groups: ${(s.flags||[]).length ? (s.flags||[]).map(f=>esc((FLAGS[f]&&FLAGS[f].label)||f)).join(', ') : 'None recorded'}</p>
       ${sendEntry ? `<p>SEND status: ${esc(sendStatusLabel(sendEntry.status))}${sendEntry.needArea?' · '+esc(sendNeedLabel(sendEntry.needArea)):''}</p>` : ''}
-      <p>Prepared by: ${esc(ME.name)} (${esc(ME.role)}) · Generated: ${new Date().toLocaleString()}</p>
+      <p>Prepared by: ${esc(ME.name)} (${esc(roleLabel(ME.role))}) · Generated: ${new Date().toLocaleString()}</p>
     </div>
     ${casesHtml || '<p>No concerns logged for this student.</p>'}
     <div class="footer"><p>This record is confidential and intended for safeguarding purposes only.</p><p>Generated by I CAN School Safeguarding Platform</p></div>
@@ -3866,7 +3944,7 @@ async function exportSendReportCSV(){
   rows.push(['Generated:', new Date().toLocaleString()]);
   rows.push([]);
   rows.push(['Period:', SEND_REPORT.month]);
-  rows.push(['Reported by:', ME.name + ' (' + ME.role + ')']);
+  rows.push(['Reported by:', ME.name + ' (' + roleLabel(ME.role) + ')']);
   rows.push([]);
 
   // Overview
@@ -3979,7 +4057,7 @@ async function exportSendReportPDF(){
       <h1>SEND & Safeguarding Whole School Report</h1>
       <div class="meta">
         <p><strong>Period:</strong> ${month}</p>
-        <p><strong>Reported by:</strong> ${ME.name} (${ME.role})</p>
+        <p><strong>Reported by:</strong> ${ME.name} (${roleLabel(ME.role)})</p>
         <p><strong>Generated:</strong> ${new Date().toLocaleString()}</p>
       </div>
       
@@ -4568,6 +4646,42 @@ function findUserByName(name){
   return loadUsers().find(function(u){ return (normLower(u.firstName)+' '+normLower(u.lastName)).trim()===n; });
 }
 
+// ── Role display names ──────────────────────────────────────────────────────
+// Permission identity never changes — every role check elsewhere in this file
+// and in index.html still compares against VALID_ROLES' fixed strings (e.g.
+// role==='Lead DSL'), and that's also what's stored on each user row and on
+// a case's assignee field. This only overlays what a role is CALLED in the
+// UI and in notification emails, so a super user can rename "Pastoral Lead"
+// to whatever this school actually calls that position without touching any
+// permission logic, stored data, or existing user/case rows.
+function loadRoleLabels(){
+  let stored = {};
+  try { stored = JSON.parse(PropertiesService.getScriptProperties().getProperty('ROLE_LABELS') || '{}'); } catch(e) {}
+  const out = {};
+  VALID_ROLES.forEach(function(r){ out[r] = (stored && stored[r]) ? stored[r] : r; });
+  return out;
+}
+function getRoleLabels(){
+  return { ok:true, labels: loadRoleLabels() };
+}
+function saveRoleLabelsAction(sessionUser, labels){
+  if(!isAdminRole(sessionUser.role)) return { ok:false, error:'You do not have permission to rename roles' };
+  if(!labels || typeof labels !== 'object') return { ok:false, error:'Labels are required' };
+  const out = {};
+  for(let i=0;i<VALID_ROLES.length;i++){
+    const key = VALID_ROLES[i];
+    const raw = labels[key];
+    const v = validateString((raw && String(raw).trim()) || key, 1, NAME_MAX_LENGTH);
+    if(!v.valid) return { ok:false, error:'"' + key + '": ' + v.error };
+    out[key] = v.value;
+  }
+  try {
+    PropertiesService.getScriptProperties().setProperty('ROLE_LABELS', JSON.stringify(out));
+  } catch(e) { return { ok:false, error:'Could not save role names' }; }
+  bumpDataVersion();
+  return { ok:true, labels: out };
+}
+
 // ── Auth: login / logout / session-bound self-service ──────────────────────
 // On a completely fresh deployment (no ADMIN_CODE property, no active
 // admin-role users yet), the first code anyone logs in with becomes the
@@ -4742,11 +4856,12 @@ function usersInRoles(roles){
   return loadUsers().filter(function(u){ return u.active && u.email && roles.indexOf(u.role) >= 0; });
 }
 function notifyAssignee(role, caseId, studentName, category, notifier){
-  const users = usersInRoles([role]);
+  const users = usersInRoles([role]); // routing stays on the raw permission key
+  const roleName = loadRoleLabels()[role] || role; // only the email text uses the custom display name
   users.forEach(function(u){
     try {
-      MailApp.sendEmail({ to:u.email, subject:'[Safeguarding] A case has been assigned to your role (' + role + '): ' + studentName,
-        body:'A safeguarding case has been assigned to the ' + role + ' role by ' + (notifier||'the system') + '.\\n\\n'
+      MailApp.sendEmail({ to:u.email, subject:'[Safeguarding] A case has been assigned to your role (' + roleName + '): ' + studentName,
+        body:'A safeguarding case has been assigned to the ' + roleName + ' role by ' + (notifier||'the system') + '.\\n\\n'
           + 'Student: ' + studentName + '\\nCategory: ' + category + '\\nCase reference: ' + caseId + '\\n\\n'
           + 'Please log in to review the full case record, chronology and any outstanding actions.\\n\\n'
           + 'This is an automated notification. Do not reply to this email.' });
@@ -5367,6 +5482,8 @@ function doPost(e){
       case 'saveStudentMeta': return jsonOut(saveStudentMetaAction(user, p.studentId, p.familyId, p.notes));
       case 'importStudents': return jsonOut(importStudentsAction(user, p.students));
       case 'mergeStudents': return jsonOut(mergeStudentsAction(user, p.keepId, p.mergeId, p.keepName));
+      case 'getRoleLabels': return jsonOut(getRoleLabels());
+      case 'saveRoleLabels': return jsonOut(saveRoleLabelsAction(user, p.labels));
       case 'listFamilies': return jsonOut(listFamilies());
       case 'saveFamily': return jsonOut(saveFamilyAction(user, p.payload));
       case 'deleteFamily': return jsonOut(deleteFamilyAction(user, p.familyId));
@@ -5868,7 +5985,7 @@ async function renderUsers(){
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2 flex-wrap">
             <span class="font-bold text-sm text-ink">${full}</span>
-            <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-${rc}Soft text-${rc}">${esc(u.role)}</span>
+            <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-${rc}Soft text-${rc}">${esc(roleLabel(u.role))}</span>
             ${u.active?'':`<span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-dim text-slate-400">Revoked</span>`}
           </div>
           <div class="text-[11px] font-medium ${u.email?'text-slate-400':'text-med font-bold'}">${u.email?esc(u.email):'No email — notifications won’t be delivered'}</div>
@@ -5893,14 +6010,48 @@ async function renderUsers(){
   icons();
 }
 
+// Lets a super user (Lead DSL/Principal) relabel any of the fixed role
+// slots — e.g. "Pastoral Lead" → whatever this school actually calls that
+// position. Purely cosmetic: ASSIGNABLE_ROLES/VALID_ROLES, every role===
+// permission check, and every stored user/case row keep using the original
+// key underneath; only roleLabel()'s display text changes.
+function openRoleLabelsModal(){
+  if(!IS_USER_MANAGER()){ toast('Only Lead DSL/Principal can rename roles','warning'); return; }
+  $('roleLabelsList').innerHTML = ASSIGNABLE_ROLES.map(r=>`
+    <div>
+      <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">${esc(r)}</label>
+      <input data-role-key="${esc(r)}" value="${esc(roleLabel(r))}" placeholder="${esc(r)}" class="w-full h-11 px-3 rounded-xl bg-card border border-line text-sm font-semibold">
+    </div>`).join('');
+  openModal('roleLabelsModal'); icons();
+}
+async function saveRoleLabelsEdit(){
+  if(!CAN_USE_APPS_SCRIPT()){ toast('Apps Script URL not configured','error'); return; }
+  const labels = {};
+  document.querySelectorAll('#roleLabelsList [data-role-key]').forEach(inp=>{ labels[inp.dataset.roleKey] = inp.value.trim(); });
+  const btn = $('saveRoleLabelsBtn'); const orig = btn.innerHTML;
+  btn.disabled=true; btn.innerHTML='<i data-lucide="loader-circle" class="w-4 h-4 animate-spin"></i>Saving…'; icons();
+  try{
+    const res = await scriptCall('saveRoleLabels', { labels });
+    if(!res.ok){ toast(res.error||'Could not save role names','error'); return; }
+    ROLE_LABELS = res.labels || ROLE_LABELS;
+    const changed = Object.keys(ROLE_LABELS).filter(k=>ROLE_LABELS[k]!==k).map(k=>`${k} → ${ROLE_LABELS[k]}`);
+    logAudit('Role names updated', changed.length ? changed.join(', ') : 'Reset to defaults');
+    closeModal('roleLabelsModal');
+    renderAll();
+    toast('Role names updated');
+  }catch(e){ toast('Could not save role names — check your connection','error'); }
+  finally{ btn.disabled=false; btn.innerHTML=orig; icons(); }
+}
 function openCreateUser(){
   $('userModalTitle').textContent='Create user';
+  $('uRole').innerHTML = roleOptionsHtml();
   $('uFirstName').value=''; $('uLastName').value=''; $('uRole').value='Teacher'; $('uEmail').value=''; $('uEditId').value='';
   openModal('userModal'); setTimeout(()=>$('uFirstName').focus(),100); icons();
 }
 
 function openEditUser(id, first, last, role, email){
   $('userModalTitle').textContent='Edit user';
+  $('uRole').innerHTML = roleOptionsHtml();
   $('uFirstName').value=first; $('uLastName').value=last; $('uRole').value=role; $('uEmail').value=email||''; $('uEditId').value=id;
   openModal('userModal'); setTimeout(()=>$('uFirstName').focus(),100); icons();
 }

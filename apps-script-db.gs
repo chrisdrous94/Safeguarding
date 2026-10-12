@@ -434,6 +434,42 @@ function findUserByName(name){
   return loadUsers().find(function(u){ return (normLower(u.firstName)+' '+normLower(u.lastName)).trim()===n; });
 }
 
+// ── Role display names ──────────────────────────────────────────────────────
+// Permission identity never changes — every role check elsewhere in this file
+// and in index.html still compares against VALID_ROLES' fixed strings (e.g.
+// role==='Lead DSL'), and that's also what's stored on each user row and on
+// a case's assignee field. This only overlays what a role is CALLED in the
+// UI and in notification emails, so a super user can rename "Pastoral Lead"
+// to whatever this school actually calls that position without touching any
+// permission logic, stored data, or existing user/case rows.
+function loadRoleLabels(){
+  let stored = {};
+  try { stored = JSON.parse(PropertiesService.getScriptProperties().getProperty('ROLE_LABELS') || '{}'); } catch(e) {}
+  const out = {};
+  VALID_ROLES.forEach(function(r){ out[r] = (stored && stored[r]) ? stored[r] : r; });
+  return out;
+}
+function getRoleLabels(){
+  return { ok:true, labels: loadRoleLabels() };
+}
+function saveRoleLabelsAction(sessionUser, labels){
+  if(!isAdminRole(sessionUser.role)) return { ok:false, error:'You do not have permission to rename roles' };
+  if(!labels || typeof labels !== 'object') return { ok:false, error:'Labels are required' };
+  const out = {};
+  for(let i=0;i<VALID_ROLES.length;i++){
+    const key = VALID_ROLES[i];
+    const raw = labels[key];
+    const v = validateString((raw && String(raw).trim()) || key, 1, NAME_MAX_LENGTH);
+    if(!v.valid) return { ok:false, error:'"' + key + '": ' + v.error };
+    out[key] = v.value;
+  }
+  try {
+    PropertiesService.getScriptProperties().setProperty('ROLE_LABELS', JSON.stringify(out));
+  } catch(e) { return { ok:false, error:'Could not save role names' }; }
+  bumpDataVersion();
+  return { ok:true, labels: out };
+}
+
 // ── Auth: login / logout / session-bound self-service ──────────────────────
 // On a completely fresh deployment (no ADMIN_CODE property, no active
 // admin-role users yet), the first code anyone logs in with becomes the
@@ -608,11 +644,12 @@ function usersInRoles(roles){
   return loadUsers().filter(function(u){ return u.active && u.email && roles.indexOf(u.role) >= 0; });
 }
 function notifyAssignee(role, caseId, studentName, category, notifier){
-  const users = usersInRoles([role]);
+  const users = usersInRoles([role]); // routing stays on the raw permission key
+  const roleName = loadRoleLabels()[role] || role; // only the email text uses the custom display name
   users.forEach(function(u){
     try {
-      MailApp.sendEmail({ to:u.email, subject:'[Safeguarding] A case has been assigned to your role (' + role + '): ' + studentName,
-        body:'A safeguarding case has been assigned to the ' + role + ' role by ' + (notifier||'the system') + '.\n\n'
+      MailApp.sendEmail({ to:u.email, subject:'[Safeguarding] A case has been assigned to your role (' + roleName + '): ' + studentName,
+        body:'A safeguarding case has been assigned to the ' + roleName + ' role by ' + (notifier||'the system') + '.\n\n'
           + 'Student: ' + studentName + '\nCategory: ' + category + '\nCase reference: ' + caseId + '\n\n'
           + 'Please log in to review the full case record, chronology and any outstanding actions.\n\n'
           + 'This is an automated notification. Do not reply to this email.' });
@@ -1233,6 +1270,8 @@ function doPost(e){
       case 'saveStudentMeta': return jsonOut(saveStudentMetaAction(user, p.studentId, p.familyId, p.notes));
       case 'importStudents': return jsonOut(importStudentsAction(user, p.students));
       case 'mergeStudents': return jsonOut(mergeStudentsAction(user, p.keepId, p.mergeId, p.keepName));
+      case 'getRoleLabels': return jsonOut(getRoleLabels());
+      case 'saveRoleLabels': return jsonOut(saveRoleLabelsAction(user, p.labels));
       case 'listFamilies': return jsonOut(listFamilies());
       case 'saveFamily': return jsonOut(saveFamilyAction(user, p.payload));
       case 'deleteFamily': return jsonOut(deleteFamilyAction(user, p.familyId));
