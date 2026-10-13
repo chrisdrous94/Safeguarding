@@ -777,6 +777,11 @@ tailwind.config = {
             <select id="caseCategorySelect" onchange="changeCategory()" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-bold mb-2"></select>
             <select id="caseSubcategorySelect" onchange="changeSubcategory()" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-semibold"></select>
           </div>
+          <div id="caseRestrictWrap" class="hidden">
+            <div class="flex items-center justify-between mb-2"><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Restrict visibility</h4>
+            <button onclick="openCaseRestrictModal()" class="text-xs font-bold text-brand hover:text-brandDark flex items-center gap-1"><i data-lucide="lock" class="w-3.5 h-3.5"></i>Manage</button></div>
+            <p id="caseRestrictStatus" class="text-[11px] text-slate-400 font-medium"></p>
+          </div>
           <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Assigned to</h4>
           <div id="caseAssignee" class="flex flex-wrap gap-1.5"></div></div>
           <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Multi-agency referrals</h4>
@@ -831,8 +836,8 @@ tailwind.config = {
         <textarea id="caseMeetingMinutes" rows="12" placeholder="Minutes / notes from the meeting…" class="w-full px-4 py-3 rounded-xl bg-dim border border-transparent text-sm font-medium resize-y"></textarea>
         <div>
           <label class="flex items-center gap-2 text-xs font-bold text-slate-500 cursor-pointer w-fit">
-            <i data-lucide="paperclip" class="w-3.5 h-3.5"></i>Attach PDF or Word document(s)
-            <input id="caseMeetingFiles" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple class="hidden" onchange="onCaseMeetingFilesChange()">
+            <i data-lucide="paperclip" class="w-3.5 h-3.5"></i>Attach PDF, Word document(s) or image(s)
+            <input id="caseMeetingFiles" type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,.heic,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/gif,image/webp,image/heic" multiple class="hidden" onchange="onCaseMeetingFilesChange()">
           </label>
           <p id="caseMeetingFilesList" class="text-[11px] text-slate-400 font-medium mt-1"></p>
         </div>
@@ -1019,6 +1024,26 @@ tailwind.config = {
     <div id="mergeStudentList" class="flex-1 overflow-y-auto scroll-thin border border-line rounded-xl divide-y divide-line"></div>
     <div class="flex justify-end gap-2 mt-4">
       <button onclick="closeModal('mergeStudentModal')" class="h-11 px-5 rounded-full text-sm font-bold text-slate-600 hover:bg-dim">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== RESTRICT CASE VISIBILITY MODAL ===================== -->
+<div id="caseRestrictModal" onclick="if(event.target===this)closeModal('caseRestrictModal')" class="fixed inset-0 z-[110] hidden bg-ink/50 backdrop-blur-sm flex items-center justify-center p-4 opacity-0 transition-opacity">
+  <div class="bg-surface w-full max-w-md rounded-4xl shadow-lift p-6 pop max-h-[85vh] flex flex-col">
+    <h3 class="font-display font-bold text-ink mb-1">Restrict visibility</h3>
+    <p class="text-[11px] text-slate-400 font-medium mb-4">When restricted, only you (Lead DSL) and the people you choose below can see this case — everyone else, including other DSLs, Principal and phase heads, loses access to it entirely.</p>
+    <label class="flex items-center gap-2 mb-3 cursor-pointer w-fit">
+      <input type="checkbox" id="caseRestrictToggle" onchange="toggleCaseRestrictPicker()" class="w-4 h-4 rounded accent-brand">
+      <span class="text-sm font-bold text-ink">Restrict this case</span>
+    </label>
+    <div id="caseRestrictPickerWrap" class="hidden flex-1 min-h-0 flex flex-col">
+      <p class="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-2">Who else can see it</p>
+      <div id="caseRestrictPicker" class="flex-1 overflow-y-auto scroll-thin border border-line rounded-xl divide-y divide-line"></div>
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button onclick="closeModal('caseRestrictModal')" class="h-11 px-5 rounded-full text-sm font-bold text-slate-600 hover:bg-dim">Cancel</button>
+      <button onclick="saveCaseRestriction()" id="saveCaseRestrictionBtn" class="h-11 px-6 rounded-full bg-brand hover:bg-brandDark text-white text-sm font-bold shadow-soft">Save</button>
     </div>
   </div>
 </div>
@@ -1248,7 +1273,8 @@ const ASSIGNABLE_ROLES = ['Teacher', 'SENDCO', 'Pastoral Lead', 'Deputy DSL', 'H
 // link can view, no app login required) — a deliberate simplicity-over-
 // confidentiality tradeoff for this feature specifically.
 const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
-const ALLOWED_ATTACHMENT_MIME = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+const ALLOWED_ATTACHMENT_MIME = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic'];
 
 // Shared header for every print/PDF export (printChronology, printCaseMeetings,
 // printCase, exportSendReportPDF) — one place to change the school logo.
@@ -1779,7 +1805,9 @@ async function syncData(){
         timeline: Array.isArray(p.timeline) ? p.timeline : (Array.isArray(r.timeline) ? r.timeline : []),
         actions: Array.isArray(p.actions) ? p.actions : (Array.isArray(r.actions) ? r.actions : []),
         linkedCaseIds: Array.isArray(p.linkedCaseIds) ? p.linkedCaseIds : (Array.isArray(r.linkedCaseIds) ? r.linkedCaseIds : []),
-        meetings: Array.isArray(p.meetings) ? p.meetings : (Array.isArray(r.meetings) ? r.meetings : [])
+        meetings: Array.isArray(p.meetings) ? p.meetings : (Array.isArray(r.meetings) ? r.meetings : []),
+        restricted: Boolean(p.restricted || r.restricted),
+        restrictedTo: Array.isArray(p.restrictedTo) ? p.restrictedTo : (Array.isArray(r.restrictedTo) ? r.restrictedTo : [])
       };
     });
     rebuildStudentsFromCases();
@@ -1962,7 +1990,7 @@ function caseCard(c){
       <div class="flex items-center gap-2.5 min-w-0">${avatar(c.studentName,'w-10 h-10',c.risk)}
         <div class="min-w-0"><div class="font-bold text-sm text-ink truncate">${esc(c.studentName)}</div>
         <div class="text-[11px] font-semibold text-slate-400">${esc(c.year)} · ${fmtShort(c.date)}</div></div>
-      </div>${riskBadge(c.risk)}
+      </div><div class="flex items-center gap-1.5 shrink-0">${c.restricted?'<i data-lucide="lock" title="Restricted — limited visibility" class="w-3.5 h-3.5 text-slate-400"></i>':''}${riskBadge(c.risk)}</div>
     </div>
     <div class="flex items-center gap-1.5 text-xs font-bold text-slate-600 mb-2"><i data-lucide="${catIcon(c.category)}" class="w-3.5 h-3.5 text-brand"></i>${esc(c.category)}${c.subcategory?`<span class="text-slate-400 font-medium">· ${esc(c.subcategory)}</span>`:''}</div>
     <p class="text-xs text-slate-500 font-medium line-clamp-2 mb-3">${esc(c.description)}</p>
@@ -2384,7 +2412,7 @@ async function postLive(body){
 function renderCaseHeader(c){
   const mCount = (c.meetings||[]).length;
   $('caseHeader').innerHTML = `<div class="flex items-center gap-3 min-w-0">${avatar(c.studentName,'w-12 h-12',c.risk)}
-    <div class="min-w-0"><div class="flex items-center gap-2 flex-wrap"><button onclick="openStudent('${c.studentId}')" class="font-display font-bold text-lg text-ink hover:text-brand truncate">${esc(c.studentName)}</button>${riskBadge(c.risk)}</div>
+    <div class="min-w-0"><div class="flex items-center gap-2 flex-wrap"><button onclick="openStudent('${c.studentId}')" class="font-display font-bold text-lg text-ink hover:text-brand truncate">${esc(c.studentName)}</button>${riskBadge(c.risk)}${c.restricted?'<span title="Restricted — limited visibility" class="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-md bg-dim text-slate-500"><i data-lucide="lock" class="w-3 h-3"></i>Restricted</span>':''}</div>
     <div class="text-xs font-semibold text-slate-400 flex items-center gap-1.5"><i data-lucide="${catIcon(c.category)}" class="w-3.5 h-3.5"></i>${esc(c.category)}${c.subcategory?' · '+esc(c.subcategory):''} · ${esc(c.year)}</div></div></div>
     <div class="flex items-center gap-1 shrink-0">
       <button onclick="openCaseMeetingsModal()" title="Meeting minutes" class="relative w-9 h-9 grid place-items-center rounded-full hover:bg-dim text-slate-500"><i data-lucide="notebook-pen" class="w-5 h-5"></i>${mCount?`<span class="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-brand text-white text-[9px] font-extrabold grid place-items-center leading-none">${mCount}</span>`:''}</button>
@@ -2415,6 +2443,8 @@ function openCase(id){
   // everyone else.
   $('caseCategoryWrap').classList.toggle('hidden', !IS_ADMIN());
   if(IS_ADMIN()) renderCaseCategoryEditor(c);
+  $('caseRestrictWrap').classList.toggle('hidden', ME.role!=='Lead DSL');
+  if(ME.role==='Lead DSL') renderCaseRestrictSummary(c);
   renderCaseAssignee(c);
   // agencies
   $('caseAgencies').innerHTML = Object.entries(AGENCIES).map(([key,a])=>{ const on=(c.agencies||[]).includes(key);
@@ -2698,6 +2728,65 @@ function changeSubcategory(){
   logAudit('Subcategory updated', `${c.studentName} → ${v||'none'}`); if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
   persist(); renderCaseHeader(c); renderCaseTimeline(c); renderAll(); toast('Subcategory updated');
 }
+// ---------- Restrict case visibility (Lead DSL only) ----------
+// Enforcement is server-side (see getCases()/filterRestrictedCases in the
+// backend) — a restricted case is never even sent to a browser that isn't
+// allowed to see it, not just hidden in the UI. restrictedTo stores user ids
+// (fetched fresh from listUsers() each time this picker opens, since this
+// app has no standing client-side store of full user records with ids).
+let CASE_RESTRICT_USERS = [];
+function renderCaseRestrictSummary(c){
+  const el = $('caseRestrictStatus'); if(!el) return;
+  if(!c.restricted){ el.textContent = 'Not restricted — visible to everyone with normal access.'; return; }
+  const n = (c.restrictedTo||[]).length;
+  el.textContent = `Restricted — visible to you and ${n} chosen ${n===1?'person':'people'}.`;
+}
+async function openCaseRestrictModal(){
+  if(ME.role!=='Lead DSL') return;
+  const c = DB.cases.find(x=>x.id===activeCaseId); if(!c) return;
+  $('caseRestrictToggle').checked = !!c.restricted;
+  $('caseRestrictPickerWrap').classList.toggle('hidden', !c.restricted);
+  $('caseRestrictPicker').innerHTML = '<p class="text-xs text-slate-400 italic p-3">Loading staff…</p>';
+  openModal('caseRestrictModal'); icons();
+  if(!CAN_USE_APPS_SCRIPT()){ $('caseRestrictPicker').innerHTML = '<p class="text-xs text-slate-400 italic p-3">Apps Script URL not configured.</p>'; return; }
+  try{
+    const res = await scriptCall('listUsers', {});
+    CASE_RESTRICT_USERS = (res.ok ? res.users||[] : []).filter(u=>u.id && u.id!==ME.userId);
+  }catch(e){ CASE_RESTRICT_USERS = []; }
+  renderCaseRestrictPicker(c);
+}
+function renderCaseRestrictPicker(c){
+  const chosen = new Set(c.restrictedTo||[]);
+  $('caseRestrictPicker').innerHTML = CASE_RESTRICT_USERS.length ? CASE_RESTRICT_USERS.map(u=>`
+    <label class="flex items-center gap-2 px-3 py-2 hover:bg-dim/40 cursor-pointer">
+      <input type="checkbox" data-user-id="${esc(u.id)}" ${chosen.has(u.id)?'checked':''} class="w-4 h-4 rounded accent-brand shrink-0">
+      <span class="text-sm font-medium text-ink min-w-0 truncate">${esc(u.firstName)} ${esc(u.lastName)}</span>
+      <span class="text-[11px] text-slate-400 font-medium ml-auto shrink-0">${esc(roleLabel(u.role))}</span>
+    </label>`).join('') : '<p class="text-xs text-slate-400 italic p-3">No other staff accounts found.</p>';
+  icons();
+}
+function toggleCaseRestrictPicker(){
+  $('caseRestrictPickerWrap').classList.toggle('hidden', !$('caseRestrictToggle').checked);
+}
+async function saveCaseRestriction(){
+  if(ME.role!=='Lead DSL') return;
+  const c = DB.cases.find(x=>x.id===activeCaseId); if(!c) return;
+  const restricted = $('caseRestrictToggle').checked;
+  const restrictedTo = restricted ? Array.from(document.querySelectorAll('#caseRestrictPicker [data-user-id]:checked')).map(el=>el.dataset.userId) : [];
+  if(!CAN_USE_APPS_SCRIPT()){ toast('Apps Script URL not configured','error'); return; }
+  const btn = $('saveCaseRestrictionBtn'); const orig = btn.innerHTML;
+  btn.disabled=true; btn.innerHTML='<i data-lucide="loader-circle" class="w-4 h-4 animate-spin"></i>Saving…'; icons();
+  try{
+    const res = await scriptCall('setCaseRestriction', { caseId:c.id, rowId:c.rowId, restricted, restrictedTo });
+    if(!res.ok){ toast(res.error||'Could not update restriction','error'); return; }
+    c.restricted = restricted; c.restrictedTo = restrictedTo;
+    logAudit('Case restriction updated', `${c.studentName} → ${restricted ? (restrictedTo.length+' chosen') : 'unrestricted'}`);
+    closeModal('caseRestrictModal');
+    persist(); renderCaseHeader(c); renderCaseRestrictSummary(c); renderAll();
+    toast(restricted ? 'Case restricted' : 'Case unrestricted');
+  }catch(e){ toast('Could not update restriction — check your connection','error'); }
+  finally{ btn.disabled=false; btn.innerHTML=orig; icons(); }
+}
 function renderCaseAssignee(c){
   const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(s=>s.trim()).filter(Boolean);
   $('caseAssignee').innerHTML = ASSIGNABLE_ROLES.map(role=>{
@@ -2745,13 +2834,13 @@ function openCaseMeetingsModal(){
   $('caseMeetingTitle').value=''; $('caseMeetingMinutes').value=''; $('caseMeetingFiles').value=''; $('caseMeetingFilesList').textContent='';
   openModal('caseMeetingsModal'); setTimeout(()=>$('caseMeetingTitle')?.focus(),100); icons();
 }
-function attachmentIcon(mimeType){ return mimeType==='application/pdf' ? 'file-text' : 'file'; }
+function attachmentIcon(mimeType){ return mimeType==='application/pdf' ? 'file-text' : mimeType.indexOf('image/')===0 ? 'image' : 'file'; }
 function fmtBytes(n){ n=Number(n)||0; return n<1024*1024 ? Math.round(n/1024)+' KB' : (n/1024/1024).toFixed(1)+' MB'; }
 function onCaseMeetingFilesChange(){
   const files = Array.from($('caseMeetingFiles').files||[]);
   const bad = files.find(f=> ALLOWED_ATTACHMENT_MIME.indexOf(f.type)<0 || f.size>ATTACHMENT_MAX_BYTES);
   if(bad){
-    toast(ALLOWED_ATTACHMENT_MIME.indexOf(bad.type)<0 ? 'Only PDF and Word documents can be attached' : `"${bad.name}" is over the 10MB limit`, 'warning');
+    toast(ALLOWED_ATTACHMENT_MIME.indexOf(bad.type)<0 ? 'Only PDF, Word documents and images can be attached' : `"${bad.name}" is over the 10MB limit`, 'warning');
     $('caseMeetingFiles').value=''; $('caseMeetingFilesList').textContent='';
     return;
   }
@@ -5114,10 +5203,16 @@ function saveSendReport(sessionUser, period, month, payloadJson){
 }
 
 // ── Cases ────────────────────────────────────────────────────────────────
+// restricted/restrictedTo were appended (not inserted, to keep old rows
+// aligned) so Lead DSL can hide a case from everyone except specific chosen
+// users — see setCaseRestrictionAction()/getCases() below. restrictedTo
+// holds user ids (not names), since Lead DSL already has the full user list
+// with ids via listUsers() for the picker, and ids survive a rename.
 function caseHeaders(){
   return ['id','timestamp','reporter','studentId','studentName','year','category','subcategory','risk','status',
     'description','location','assignee','department','strategies','agencies','bodyMap','timeline','actions',
-    'strategyImpactPositive','strategyImpactNone','sendcoReason','strategyDuration','linkedCaseIds','studentClass','meetings'];
+    'strategyImpactPositive','strategyImpactNone','sendcoReason','strategyDuration','linkedCaseIds','studentClass','meetings',
+    'restricted','restrictedTo'];
 }
 function ensureCasesSheet(){ return getOrCreateSheet(SHEET_CASES, caseHeaders()); }
 function parseJsonCell(value, fallback){
@@ -5151,7 +5246,8 @@ function getCasesFresh(){
         strategies:parseJsonCell(row[14],[]), agencies:parseJsonCell(row[15],[]), bodyMap:parseJsonCell(row[16],[]),
         timeline:parseJsonCell(row[17],[]), actions:parseJsonCell(row[18],[]), strategyImpactPositive:row[19]||'',
         strategyImpactNone:row[20]||'', sendcoReason:row[21]||'', strategyDuration:row[22]||'',
-        linkedCaseIds: parseJsonCell(row[23], []), studentClass: row[24]||'', meetings: parseJsonCell(row[25], [])
+        linkedCaseIds: parseJsonCell(row[23], []), studentClass: row[24]||'', meetings: parseJsonCell(row[25], []),
+        restricted: String(row[26]).toLowerCase()==='true', restrictedTo: parseJsonCell(row[27], [])
       };
       byId[c.id] = {
         id:c.id, rowId:i+1, timestamp:c.date, reporterName:c.reporter, studentId:c.studentId, studentName:c.studentName,
@@ -5160,7 +5256,8 @@ function getCasesFresh(){
         agencies: Array.isArray(c.agencies) ? c.agencies.join(',') : String(c.agencies||''),
         bodyMap:c.bodyMap, timeline:c.timeline, actions:c.actions, strategyImpactPositive:c.strategyImpactPositive,
         strategyImpactNone:c.strategyImpactNone, sendcoReason:c.sendcoReason, strategyDuration:c.strategyDuration,
-        linkedCaseIds:c.linkedCaseIds, studentClass:c.studentClass, meetings:c.meetings, payload:c
+        linkedCaseIds:c.linkedCaseIds, studentClass:c.studentClass, meetings:c.meetings,
+        restricted:c.restricted, restrictedTo:c.restrictedTo, payload:c
       };
       continue;
     }
@@ -5171,12 +5268,27 @@ function getCasesFresh(){
   }
   return { ok:true, status:'success', data: Object.keys(byId).map(function(k){ return byId[k]; }) };
 }
-function getCases(){
+// The cache (cases_meta/cases_chunk_) always holds the full, unfiltered
+// dataset under one shared key — restriction is applied per-request, below,
+// AFTER reading from cache/sheet, so one user's filtered view is never what
+// gets cached and handed to a different user next.
+function filterRestrictedCases(list, sessionUser){
+  const role = sessionUser && sessionUser.role;
+  const uid = sessionUser && sessionUser.id;
+  if(role === 'Lead DSL') return list; // Lead DSL always sees everything, restricted or not
+  return list.filter(function(c){
+    if(!c.restricted) return true;
+    return Array.isArray(c.restrictedTo) && uid && c.restrictedTo.indexOf(uid) >= 0;
+  });
+}
+function getCases(sessionUser){
   const cached = cacheGetJson('cases_meta', 'cases_chunk_');
-  if(cached) return { ok:true, status:'success', data:cached, version:getDataVersion() };
+  const version = getDataVersion();
+  if(cached) return { ok:true, status:'success', data:filterRestrictedCases(cached, sessionUser), version:version };
   const result = getCasesFresh();
   if(result.ok) cachePutJson('cases_meta', 'cases_chunk_', result.data);
-  result.version = getDataVersion();
+  result.data = filterRestrictedCases(result.data || [], sessionUser);
+  result.version = version;
   return result;
 }
 
@@ -5193,10 +5305,19 @@ function normalizeCasePayload(p){
     strategyImpactNone:p.strategyImpactNone||'', sendcoReason:p.sendcoReason||'', strategyDuration:p.strategyDuration||'',
     linkedCaseIds: Array.isArray(p.linkedCaseIds) ? p.linkedCaseIds.filter(Boolean) : [],
     studentClass: p.studentClass||'',
-    meetings: Array.isArray(p.meetings) ? p.meetings : []
+    meetings: Array.isArray(p.meetings) ? p.meetings : [],
+    restricted: Boolean(p.restricted),
+    restrictedTo: Array.isArray(p.restrictedTo) ? p.restrictedTo.filter(Boolean) : []
   };
 }
-function upsertCaseRecord(payload){
+// allowRestrictionChange defaults to false: a normal case save (syncCase,
+// from any signed-in user, for any field) must never be able to alter
+// restricted/restrictedTo, even if the client's local copy of those two
+// fields is stale or was tampered with — only setCaseRestrictionAction()
+// (Lead DSL-gated) calls this with it set to true. Without this, restricting
+// a case would be purely cosmetic, since every other save path round-trips
+// whatever restricted/restrictedTo value it already had in memory.
+function upsertCaseRecord(payload, allowRestrictionChange){
   let isNew = false;
   let meetingAdded = false;
   const result = withLock(function(){
@@ -5205,12 +5326,17 @@ function upsertCaseRecord(payload){
     const c = normalizeCasePayload(payload);
     const idx = cases.findIndex(function(x){ return x.id === c.id; });
     isNew = idx < 0;
+    if(!isNew && !allowRestrictionChange){
+      c.restricted = Boolean(cases[idx].restricted);
+      c.restrictedTo = Array.isArray(cases[idx].restrictedTo) ? cases[idx].restrictedTo : [];
+    }
     const prevMeetingsCount = isNew ? 0 : (Array.isArray(cases[idx].meetings) ? cases[idx].meetings.length : 0);
     meetingAdded = !isNew && c.meetings.length > prevMeetingsCount;
     const row = [c.id,c.date,c.reporter,c.studentId,c.studentName,c.year,c.category,c.subcategory,c.risk,c.status,
       c.description,c.location,c.assignee,c.department,JSON.stringify(c.strategies),JSON.stringify(c.agencies),
       JSON.stringify(c.bodyMap),JSON.stringify(c.timeline),JSON.stringify(c.actions),c.strategyImpactPositive,
-      c.strategyImpactNone,c.sendcoReason,c.strategyDuration,JSON.stringify(c.linkedCaseIds),c.studentClass,JSON.stringify(c.meetings)];
+      c.strategyImpactNone,c.sendcoReason,c.strategyDuration,JSON.stringify(c.linkedCaseIds),c.studentClass,JSON.stringify(c.meetings),
+      Boolean(c.restricted),JSON.stringify(c.restrictedTo)];
     let rowId;
     if(idx >= 0){ rowId = Number(cases[idx].rowId || (idx+2)); sh.getRange(rowId,1,1,row.length).setValues([row]); }
     else { sh.appendRow(row); rowId = sh.getLastRow(); }
@@ -5264,6 +5390,27 @@ function updateCaseStatus(rowId, caseId, status){
   payload.status = status;
   return upsertCaseRecord(payload);
 }
+// The only path allowed to change restricted/restrictedTo (see
+// upsertCaseRecord's allowRestrictionChange) — everything else preserves
+// whatever was already stored. restrictedTo is a list of user ids; Lead DSL
+// themselves always sees a restricted case regardless of this list (see
+// filterRestrictedCases), so they don't need to add themselves to it.
+function setCaseRestrictionAction(sessionUser, caseId, rowId, restricted, restrictedTo){
+  if(sessionUser.role !== 'Lead DSL') return { ok:false, error:'Only Lead DSL can restrict a case' };
+  const data = getCasesFresh().data || [];
+  const c = data.find(function(x){ return String(x.rowId)===String(rowId) || x.id===caseId; });
+  if(!c) return { ok:false, error:'Case not found' };
+  const payload = c.payload || normalizeCasePayload({
+    id:c.id, date:c.timestamp, reporter:c.reporterName, studentName:c.studentName, year:c.grade, category:c.category,
+    subcategory:'', risk:c.severity, status:c.status, description:c.description, location:'', assignee:c.assignee,
+    department:c.department||'', studentClass:c.studentClass||'',
+    agencies:(c.agencies||'').split(',').filter(Boolean), bodyMap:c.bodyMap||[], timeline:c.timeline||[], actions:c.actions||[],
+    linkedCaseIds:c.linkedCaseIds||[], meetings:c.meetings||[]
+  });
+  payload.restricted = Boolean(restricted);
+  payload.restrictedTo = Array.isArray(restrictedTo) ? restrictedTo.filter(Boolean) : [];
+  return upsertCaseRecord(payload, true);
+}
 function deleteCaseAction(caseId, rowId){
   return withLock(function(){
     const sh = ensureCasesSheet();
@@ -5285,7 +5432,8 @@ function deleteCaseAction(caseId, rowId){
 // the normal syncCase — this action never touches the cases sheet itself.
 const MEETING_ATTACHMENTS_FOLDER = 'Safeguarding — Meeting minute attachments';
 const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024; // conservative — the file travels as base64 JSON in the POST body
-const ALLOWED_ATTACHMENT_MIME = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+const ALLOWED_ATTACHMENT_MIME = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic'];
 function ensureMeetingAttachmentsFolder(){
   const existing = DriveApp.getFoldersByName(MEETING_ATTACHMENTS_FOLDER);
   if(existing.hasNext()) return existing.next();
@@ -5294,7 +5442,7 @@ function ensureMeetingAttachmentsFolder(){
 function uploadMeetingAttachment(sessionUser, fileName, mimeType, base64Data){
   const nameV = validateString(fileName, 1, 200);
   if(!nameV.valid) return { ok:false, error:'File name: ' + nameV.error };
-  if(ALLOWED_ATTACHMENT_MIME.indexOf(mimeType) < 0) return { ok:false, error:'Only PDF and Word documents can be attached' };
+  if(ALLOWED_ATTACHMENT_MIME.indexOf(mimeType) < 0) return { ok:false, error:'Only PDF, Word documents and images can be attached' };
   let bytes;
   try { bytes = Utilities.base64Decode(base64Data); } catch(e){ return { ok:false, error:'Could not read file data' }; }
   if(!bytes || !bytes.length) return { ok:false, error:'File is empty' };
@@ -5545,9 +5693,10 @@ function doPost(e){
       case 'changeOwnCode': return jsonOut(changeOwnCode(user, p.currentCode, p.newCode));
       case 'updateOwnProfile': return jsonOut(updateOwnProfile(user, p.firstName, p.lastName));
       case 'getVersion': return jsonOut({ ok:true, version:getDataVersion() });
-      case 'getCases': return jsonOut(getCases());
+      case 'getCases': return jsonOut(getCases(user));
       case 'syncCase': return jsonOut(upsertCaseRecord(p.payload));
       case 'updateStatus': return jsonOut(updateCaseStatus(p.rowId, p.caseId, p.status));
+      case 'setCaseRestriction': return jsonOut(setCaseRestrictionAction(user, p.caseId, p.rowId, p.restricted, p.restrictedTo));
       case 'deleteCase': return jsonOut(deleteCaseAction(p.caseId, p.rowId));
       case 'uploadMeetingAttachment': return jsonOut(uploadMeetingAttachment(user, p.fileName, p.mimeType, p.data));
       case 'notifyAssignee': return jsonOut(notifyAssignee(p.assignee, p.caseId, p.studentName, p.category, p.notifier));

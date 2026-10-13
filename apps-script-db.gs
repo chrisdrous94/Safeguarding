@@ -818,10 +818,16 @@ function saveSendReport(sessionUser, period, month, payloadJson){
 }
 
 // ── Cases ────────────────────────────────────────────────────────────────
+// restricted/restrictedTo were appended (not inserted, to keep old rows
+// aligned) so Lead DSL can hide a case from everyone except specific chosen
+// users — see setCaseRestrictionAction()/getCases() below. restrictedTo
+// holds user ids (not names), since Lead DSL already has the full user list
+// with ids via listUsers() for the picker, and ids survive a rename.
 function caseHeaders(){
   return ['id','timestamp','reporter','studentId','studentName','year','category','subcategory','risk','status',
     'description','location','assignee','department','strategies','agencies','bodyMap','timeline','actions',
-    'strategyImpactPositive','strategyImpactNone','sendcoReason','strategyDuration','linkedCaseIds','studentClass','meetings'];
+    'strategyImpactPositive','strategyImpactNone','sendcoReason','strategyDuration','linkedCaseIds','studentClass','meetings',
+    'restricted','restrictedTo'];
 }
 function ensureCasesSheet(){ return getOrCreateSheet(SHEET_CASES, caseHeaders()); }
 function parseJsonCell(value, fallback){
@@ -855,7 +861,8 @@ function getCasesFresh(){
         strategies:parseJsonCell(row[14],[]), agencies:parseJsonCell(row[15],[]), bodyMap:parseJsonCell(row[16],[]),
         timeline:parseJsonCell(row[17],[]), actions:parseJsonCell(row[18],[]), strategyImpactPositive:row[19]||'',
         strategyImpactNone:row[20]||'', sendcoReason:row[21]||'', strategyDuration:row[22]||'',
-        linkedCaseIds: parseJsonCell(row[23], []), studentClass: row[24]||'', meetings: parseJsonCell(row[25], [])
+        linkedCaseIds: parseJsonCell(row[23], []), studentClass: row[24]||'', meetings: parseJsonCell(row[25], []),
+        restricted: String(row[26]).toLowerCase()==='true', restrictedTo: parseJsonCell(row[27], [])
       };
       byId[c.id] = {
         id:c.id, rowId:i+1, timestamp:c.date, reporterName:c.reporter, studentId:c.studentId, studentName:c.studentName,
@@ -864,7 +871,8 @@ function getCasesFresh(){
         agencies: Array.isArray(c.agencies) ? c.agencies.join(',') : String(c.agencies||''),
         bodyMap:c.bodyMap, timeline:c.timeline, actions:c.actions, strategyImpactPositive:c.strategyImpactPositive,
         strategyImpactNone:c.strategyImpactNone, sendcoReason:c.sendcoReason, strategyDuration:c.strategyDuration,
-        linkedCaseIds:c.linkedCaseIds, studentClass:c.studentClass, meetings:c.meetings, payload:c
+        linkedCaseIds:c.linkedCaseIds, studentClass:c.studentClass, meetings:c.meetings,
+        restricted:c.restricted, restrictedTo:c.restrictedTo, payload:c
       };
       continue;
     }
@@ -875,12 +883,27 @@ function getCasesFresh(){
   }
   return { ok:true, status:'success', data: Object.keys(byId).map(function(k){ return byId[k]; }) };
 }
-function getCases(){
+// The cache (cases_meta/cases_chunk_) always holds the full, unfiltered
+// dataset under one shared key — restriction is applied per-request, below,
+// AFTER reading from cache/sheet, so one user's filtered view is never what
+// gets cached and handed to a different user next.
+function filterRestrictedCases(list, sessionUser){
+  const role = sessionUser && sessionUser.role;
+  const uid = sessionUser && sessionUser.id;
+  if(role === 'Lead DSL') return list; // Lead DSL always sees everything, restricted or not
+  return list.filter(function(c){
+    if(!c.restricted) return true;
+    return Array.isArray(c.restrictedTo) && uid && c.restrictedTo.indexOf(uid) >= 0;
+  });
+}
+function getCases(sessionUser){
   const cached = cacheGetJson('cases_meta', 'cases_chunk_');
-  if(cached) return { ok:true, status:'success', data:cached, version:getDataVersion() };
+  const version = getDataVersion();
+  if(cached) return { ok:true, status:'success', data:filterRestrictedCases(cached, sessionUser), version:version };
   const result = getCasesFresh();
   if(result.ok) cachePutJson('cases_meta', 'cases_chunk_', result.data);
-  result.version = getDataVersion();
+  result.data = filterRestrictedCases(result.data || [], sessionUser);
+  result.version = version;
   return result;
 }
 
@@ -897,10 +920,19 @@ function normalizeCasePayload(p){
     strategyImpactNone:p.strategyImpactNone||'', sendcoReason:p.sendcoReason||'', strategyDuration:p.strategyDuration||'',
     linkedCaseIds: Array.isArray(p.linkedCaseIds) ? p.linkedCaseIds.filter(Boolean) : [],
     studentClass: p.studentClass||'',
-    meetings: Array.isArray(p.meetings) ? p.meetings : []
+    meetings: Array.isArray(p.meetings) ? p.meetings : [],
+    restricted: Boolean(p.restricted),
+    restrictedTo: Array.isArray(p.restrictedTo) ? p.restrictedTo.filter(Boolean) : []
   };
 }
-function upsertCaseRecord(payload){
+// allowRestrictionChange defaults to false: a normal case save (syncCase,
+// from any signed-in user, for any field) must never be able to alter
+// restricted/restrictedTo, even if the client's local copy of those two
+// fields is stale or was tampered with — only setCaseRestrictionAction()
+// (Lead DSL-gated) calls this with it set to true. Without this, restricting
+// a case would be purely cosmetic, since every other save path round-trips
+// whatever restricted/restrictedTo value it already had in memory.
+function upsertCaseRecord(payload, allowRestrictionChange){
   let isNew = false;
   let meetingAdded = false;
   const result = withLock(function(){
@@ -909,12 +941,17 @@ function upsertCaseRecord(payload){
     const c = normalizeCasePayload(payload);
     const idx = cases.findIndex(function(x){ return x.id === c.id; });
     isNew = idx < 0;
+    if(!isNew && !allowRestrictionChange){
+      c.restricted = Boolean(cases[idx].restricted);
+      c.restrictedTo = Array.isArray(cases[idx].restrictedTo) ? cases[idx].restrictedTo : [];
+    }
     const prevMeetingsCount = isNew ? 0 : (Array.isArray(cases[idx].meetings) ? cases[idx].meetings.length : 0);
     meetingAdded = !isNew && c.meetings.length > prevMeetingsCount;
     const row = [c.id,c.date,c.reporter,c.studentId,c.studentName,c.year,c.category,c.subcategory,c.risk,c.status,
       c.description,c.location,c.assignee,c.department,JSON.stringify(c.strategies),JSON.stringify(c.agencies),
       JSON.stringify(c.bodyMap),JSON.stringify(c.timeline),JSON.stringify(c.actions),c.strategyImpactPositive,
-      c.strategyImpactNone,c.sendcoReason,c.strategyDuration,JSON.stringify(c.linkedCaseIds),c.studentClass,JSON.stringify(c.meetings)];
+      c.strategyImpactNone,c.sendcoReason,c.strategyDuration,JSON.stringify(c.linkedCaseIds),c.studentClass,JSON.stringify(c.meetings),
+      Boolean(c.restricted),JSON.stringify(c.restrictedTo)];
     let rowId;
     if(idx >= 0){ rowId = Number(cases[idx].rowId || (idx+2)); sh.getRange(rowId,1,1,row.length).setValues([row]); }
     else { sh.appendRow(row); rowId = sh.getLastRow(); }
@@ -968,6 +1005,27 @@ function updateCaseStatus(rowId, caseId, status){
   payload.status = status;
   return upsertCaseRecord(payload);
 }
+// The only path allowed to change restricted/restrictedTo (see
+// upsertCaseRecord's allowRestrictionChange) — everything else preserves
+// whatever was already stored. restrictedTo is a list of user ids; Lead DSL
+// themselves always sees a restricted case regardless of this list (see
+// filterRestrictedCases), so they don't need to add themselves to it.
+function setCaseRestrictionAction(sessionUser, caseId, rowId, restricted, restrictedTo){
+  if(sessionUser.role !== 'Lead DSL') return { ok:false, error:'Only Lead DSL can restrict a case' };
+  const data = getCasesFresh().data || [];
+  const c = data.find(function(x){ return String(x.rowId)===String(rowId) || x.id===caseId; });
+  if(!c) return { ok:false, error:'Case not found' };
+  const payload = c.payload || normalizeCasePayload({
+    id:c.id, date:c.timestamp, reporter:c.reporterName, studentName:c.studentName, year:c.grade, category:c.category,
+    subcategory:'', risk:c.severity, status:c.status, description:c.description, location:'', assignee:c.assignee,
+    department:c.department||'', studentClass:c.studentClass||'',
+    agencies:(c.agencies||'').split(',').filter(Boolean), bodyMap:c.bodyMap||[], timeline:c.timeline||[], actions:c.actions||[],
+    linkedCaseIds:c.linkedCaseIds||[], meetings:c.meetings||[]
+  });
+  payload.restricted = Boolean(restricted);
+  payload.restrictedTo = Array.isArray(restrictedTo) ? restrictedTo.filter(Boolean) : [];
+  return upsertCaseRecord(payload, true);
+}
 function deleteCaseAction(caseId, rowId){
   return withLock(function(){
     const sh = ensureCasesSheet();
@@ -989,7 +1047,8 @@ function deleteCaseAction(caseId, rowId){
 // the normal syncCase — this action never touches the cases sheet itself.
 const MEETING_ATTACHMENTS_FOLDER = 'Safeguarding — Meeting minute attachments';
 const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024; // conservative — the file travels as base64 JSON in the POST body
-const ALLOWED_ATTACHMENT_MIME = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+const ALLOWED_ATTACHMENT_MIME = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic'];
 function ensureMeetingAttachmentsFolder(){
   const existing = DriveApp.getFoldersByName(MEETING_ATTACHMENTS_FOLDER);
   if(existing.hasNext()) return existing.next();
@@ -998,7 +1057,7 @@ function ensureMeetingAttachmentsFolder(){
 function uploadMeetingAttachment(sessionUser, fileName, mimeType, base64Data){
   const nameV = validateString(fileName, 1, 200);
   if(!nameV.valid) return { ok:false, error:'File name: ' + nameV.error };
-  if(ALLOWED_ATTACHMENT_MIME.indexOf(mimeType) < 0) return { ok:false, error:'Only PDF and Word documents can be attached' };
+  if(ALLOWED_ATTACHMENT_MIME.indexOf(mimeType) < 0) return { ok:false, error:'Only PDF, Word documents and images can be attached' };
   let bytes;
   try { bytes = Utilities.base64Decode(base64Data); } catch(e){ return { ok:false, error:'Could not read file data' }; }
   if(!bytes || !bytes.length) return { ok:false, error:'File is empty' };
@@ -1249,9 +1308,10 @@ function doPost(e){
       case 'changeOwnCode': return jsonOut(changeOwnCode(user, p.currentCode, p.newCode));
       case 'updateOwnProfile': return jsonOut(updateOwnProfile(user, p.firstName, p.lastName));
       case 'getVersion': return jsonOut({ ok:true, version:getDataVersion() });
-      case 'getCases': return jsonOut(getCases());
+      case 'getCases': return jsonOut(getCases(user));
       case 'syncCase': return jsonOut(upsertCaseRecord(p.payload));
       case 'updateStatus': return jsonOut(updateCaseStatus(p.rowId, p.caseId, p.status));
+      case 'setCaseRestriction': return jsonOut(setCaseRestrictionAction(user, p.caseId, p.rowId, p.restricted, p.restrictedTo));
       case 'deleteCase': return jsonOut(deleteCaseAction(p.caseId, p.rowId));
       case 'uploadMeetingAttachment': return jsonOut(uploadMeetingAttachment(user, p.fileName, p.mimeType, p.data));
       case 'notifyAssignee': return jsonOut(notifyAssignee(p.assignee, p.caseId, p.studentName, p.category, p.notifier));
