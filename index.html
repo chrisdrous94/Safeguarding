@@ -1361,6 +1361,15 @@ const today = () => new Date();
 const fmtDate = d => new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
 const fmtShort = d => new Date(d).toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
 const fmtTime = d => new Date(d).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+// For <input type="datetime-local"> value attributes (Lead DSL's case-date
+// and chronology-date editors) — local time, no timezone suffix, minute
+// precision, exactly what that input type expects.
+function toDatetimeLocalValue(iso){
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return '';
+  const pad = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 const daysBetween = (a,b) => Math.round((new Date(b)-new Date(a))/86400000);
 const initials = n => n.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
 const isOpen = c => c.status !== 'Resolved';
@@ -2422,7 +2431,10 @@ function openCase(id){
   ].filter(Boolean).join('');
   $('caseStrategies').innerHTML = strategyItems + (strategyExtras?`<div class="mt-3 pt-3 border-t border-line space-y-2 text-[11px] text-slate-600">${strategyExtras}</div>`:'');
   // meta
-  $('caseMeta').innerHTML = [['Logged',fmtDate(c.date)+' '+fmtTime(c.date)],['Reported by',c.reporter],['Class',c.studentClass||'—'],['Department',c.department||'—'],['Location',c.location||'—'],['Reference',c.id.slice(0,8).toUpperCase()]]
+  const loggedRow = ME.role==='Lead DSL'
+    ? `<div class="flex justify-between items-center gap-2"><span class="text-slate-400 font-medium shrink-0">Logged</span><input type="datetime-local" value="${toDatetimeLocalValue(c.date)}" onchange="changeCaseDate(this.value)" class="h-8 px-2 rounded-lg border border-line bg-dim text-xs font-semibold text-ink"></div>`
+    : `<div class="flex justify-between gap-2"><span class="text-slate-400 font-medium">Logged</span><span class="text-ink font-semibold text-right">${esc(fmtDate(c.date)+' '+fmtTime(c.date))}</span></div>`;
+  $('caseMeta').innerHTML = loggedRow + [['Reported by',c.reporter],['Class',c.studentClass||'—'],['Department',c.department||'—'],['Location',c.location||'—'],['Reference',c.id.slice(0,8).toUpperCase()]]
     .map(([k2,v])=>`<div class="flex justify-between gap-2"><span class="text-slate-400 font-medium">${k2}</span><span class="text-ink font-semibold text-right">${esc(v)}</span></div>`).join('');
   renderCaseActions(c); renderCaseTimeline(c); renderCaseLinked(c); renderCaseMeetings(c);
   renderCaseSendStatus(c);
@@ -2526,17 +2538,20 @@ function renderCaseActions(c){
 function renderCaseTimeline(c){
   const tl=[...(c.timeline||[])].sort((a,b)=>new Date(b.time)-new Date(a.time));
   const ico={log:'flag',note:'message-square',action:'list-checks',status:'refresh-cw',agency:'git-merge',send:'clipboard-list'};
-  // Chronology deletion is Lead DSL-only — deliberately narrower than every
-  // other case edit here, since removing a safeguarding record (rather than
-  // adding to it) is the one destructive action in the chronology.
+  // Chronology deletion AND date-editing are both Lead DSL-only — deliberately
+  // narrower than every other case edit here, since rewriting when something
+  // happened (or removing it outright) is a step above changing a status/risk.
   const canDelete = ME.role==='Lead DSL';
   $('caseTimeline').innerHTML = tl.map(e=>{
-    const idx = c.timeline.indexOf(e); // position in the raw (unsorted) array — what deleteTimelineEntry() targets
+    const idx = c.timeline.indexOf(e); // position in the raw (unsorted) array — what deleteTimelineEntry()/changeTimelineDate() target
+    const whenHtml = canDelete
+      ? `<input type="datetime-local" value="${toDatetimeLocalValue(e.time)}" onchange="changeTimelineDate(${idx}, this.value)" class="h-6 px-1.5 rounded border border-line bg-card text-[10px] font-bold text-slate-600">`
+      : `${fmtShort(e.time)} ${fmtTime(e.time)}`;
     return `<div class="relative">
     <span class="absolute -left-[26px] top-0.5 w-7 h-7 -ml-2 rounded-full bg-card border border-line grid place-items-center"><i data-lucide="${ico[e.type]||'dot'}" class="w-3.5 h-3.5 text-brand"></i></span>
     <div class="flex items-start justify-between gap-2">
       <div class="min-w-0">
-        <div class="text-[10px] font-bold uppercase tracking-wide text-slate-400">${fmtShort(e.time)} ${fmtTime(e.time)} · ${esc(e.author)}</div>
+        <div class="text-[10px] font-bold uppercase tracking-wide text-slate-400 flex items-center gap-1.5 flex-wrap">${whenHtml}<span>· ${esc(e.author)}</span></div>
         <div class="text-sm text-slate-700 font-medium">${esc(e.text)}</div>
       </div>
       ${canDelete ? `<button onclick="deleteTimelineEntry(${idx})" title="Delete entry" class="w-6 h-6 shrink-0 rounded-full hover:bg-critSoft text-slate-300 hover:text-crit grid place-items-center"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
@@ -2544,6 +2559,16 @@ function renderCaseTimeline(c){
   </div>`;
   }).join('');
   icons();
+}
+function changeTimelineDate(index, value){
+  if(ME.role!=='Lead DSL') return;
+  const c = DB.cases.find(x=>x.id===activeCaseId); if(!c) return;
+  const d = new Date(value);
+  if(isNaN(d.getTime())){ toast('Enter a valid date','warning'); return; }
+  c.timeline[index].time = d.toISOString();
+  logAudit('Chronology entry date changed', c.studentName);
+  if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
+  persist(); renderCaseTimeline(c); toast('Chronology date updated');
 }
 function deleteTimelineEntry(index){
   if(ME.role!=='Lead DSL') return;
@@ -2617,6 +2642,21 @@ function changeStatus(){ const c=DB.cases.find(x=>x.id===activeCaseId); const v=
   c.status=v; c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'status',text:`Status changed to ${v}.`});
   logAudit('Status updated', `${c.studentName} → ${v}`); if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
   persist(); renderCaseTimeline(c); renderAll(); toast('Status updated'); }
+// Case-logged-date and chronology-entry-date editing are Lead DSL-only (see
+// the caseMeta "Logged" row and renderCaseTimeline()'s date inputs below) —
+// changing a record's date is a step above changing its status/risk/category,
+// so it's kept to the single narrowest role rather than IS_ADMIN().
+function changeCaseDate(value){
+  if(ME.role!=='Lead DSL') return;
+  const c=DB.cases.find(x=>x.id===activeCaseId); if(!c) return;
+  const d = new Date(value);
+  if(isNaN(d.getTime())){ toast('Enter a valid date','warning'); return; }
+  const old = c.date;
+  c.date = d.toISOString();
+  c.timeline.unshift({time:new Date().toISOString(),author:ME.name,type:'status',text:`Logged date changed from ${fmtDate(old)} ${fmtTime(old)} to ${fmtDate(c.date)} ${fmtTime(c.date)}.`});
+  logAudit('Case date updated', `${c.studentName} → ${fmtDate(c.date)}`); if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
+  persist(); renderCaseTimeline(c); renderAll(); toast('Logged date updated');
+}
 // Risk level is editable by any signed-in user with access to the case —
 // unlike Status, which stays DSL-only (see the caseStatus.disabled line
 // above in openCase()).
