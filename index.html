@@ -154,6 +154,7 @@ tailwind.config = {
     <p class="px-3 pt-3 pb-1.5 text-[10px] font-bold tracking-widest uppercase text-slate-400">Workspace</p>
     <button data-nav="dashboard" class="nav-btn nav-active w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-600"><i data-lucide="layout-dashboard" class="nav-ico w-[18px] h-[18px] text-slate-400"></i>Dashboard</button>
     <button data-nav="concerns" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-dim"><span class="flex items-center gap-3"><i data-lucide="folder-open" class="nav-ico w-[18px] h-[18px] text-slate-400"></i>Concerns</span><span id="navConcernCount" class="text-[10px] font-bold bg-dim text-slate-500 px-2 py-0.5 rounded-full">0</span></button>
+    <button data-nav="archive" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-dim"><i data-lucide="archive" class="nav-ico w-[18px] h-[18px] text-slate-400"></i>Archive</button>
     <button data-nav="students" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-dim"><i data-lucide="users-round" class="nav-ico w-[18px] h-[18px] text-slate-400"></i>Students</button>
     <button data-nav="families" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-dim"><i data-lucide="git-branch" class="nav-ico w-[18px] h-[18px] text-slate-400"></i>Families</button>
     <button data-nav="tasks" class="nav-btn w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-dim"><span class="flex items-center gap-3"><i data-lucide="list-checks" class="nav-ico w-[18px] h-[18px] text-slate-400"></i>Actions</span><span id="navTaskCount" class="text-[10px] font-bold bg-medSoft text-med px-2 py-0.5 rounded-full hidden">0</span></button>
@@ -265,7 +266,7 @@ tailwind.config = {
           <option value="All">All risk</option><option>Critical</option><option>High</option><option>Medium</option><option>Low</option>
         </select>
         <select id="conStatus" onchange="onConcernsFilterChange()" class="h-12 px-3 rounded-2xl bg-dim border border-transparent text-sm font-bold text-slate-700">
-          <option value="Active">Active cases</option><option value="All">All statuses</option><option>New</option><option>In progress</option><option>Monitoring</option><option>Referred</option><option>Resolved</option>
+          <option value="Active">Active cases</option><option value="All">All statuses</option><option>New</option><option>In progress</option><option>Monitoring</option><option>Referred</option>
         </select>
         <button onclick="exportCSV()" class="h-12 px-4 rounded-2xl bg-card border border-line text-sm font-bold text-slate-600 hover:bg-dim flex items-center justify-center gap-2"><i data-lucide="download" class="w-4 h-4"></i><span class="hidden sm:inline">Export</span></button>
       </div>
@@ -278,8 +279,28 @@ tailwind.config = {
       <button id="vList" onclick="setConView('list')" class="px-3 py-1.5 rounded-full text-slate-500">List</button>
     </div>
   </div>
-  <div id="conBoard" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4"></div>
+  <div id="conBoard" class="grid grid-cols-1 lg:grid-cols-3 gap-4"></div>
   <div id="conList" class="hidden bg-card rounded-4xl border border-line shadow-soft overflow-hidden"></div>
+</section>
+
+<!-- ===================== ARCHIVE (resolved cases) ===================== -->
+<section data-view="archive" class="hidden fade space-y-4">
+  <div class="bg-card rounded-4xl border border-line shadow-soft p-4 sm:p-5">
+    <div class="flex flex-col lg:flex-row lg:items-center gap-3">
+      <div class="relative flex-1">
+        <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+        <input id="arcSearch" oninput="onArchiveFilterChangeDebounced()" placeholder="Search student, category, reporter…" class="w-full h-12 pl-11 pr-4 rounded-2xl bg-dim border border-transparent text-sm font-medium">
+      </div>
+      <div class="grid grid-cols-2 sm:flex gap-2.5">
+        <select id="arcCategory" onchange="onArchiveFilterChange()" class="h-12 px-3 rounded-2xl bg-dim border border-transparent text-sm font-bold text-slate-700"><option value="All">All categories</option></select>
+        <button onclick="exportArchiveCSV()" class="h-12 px-4 rounded-2xl bg-card border border-line text-sm font-bold text-slate-600 hover:bg-dim flex items-center justify-center gap-2"><i data-lucide="download" class="w-4 h-4"></i><span class="hidden sm:inline">Export</span></button>
+      </div>
+    </div>
+  </div>
+  <div class="flex items-center justify-between px-1">
+    <p class="text-xs font-bold text-slate-400 uppercase tracking-wider"><span id="arcCount">0</span> resolved cases</p>
+  </div>
+  <div id="arcGrid" class="grid grid-cols-1 lg:grid-cols-3 gap-4"></div>
 </section>
 
 <!-- ===================== STUDENTS ===================== -->
@@ -1420,6 +1441,7 @@ function debounce(fn, wait=200){
 // rendering all of them on every keystroke is the actual cost, not the fetch) ----------
 const LIST_PAGE_SIZE = 50;
 let concernsVisibleCount = LIST_PAGE_SIZE;
+let archiveVisibleCount = LIST_PAGE_SIZE;
 let studentsVisibleCount = LIST_PAGE_SIZE;
 let tasksVisibleCount = LIST_PAGE_SIZE;
 function loadMoreControl(remaining, onClick){
@@ -1589,6 +1611,7 @@ function assigneeNames(){
 const VIEW_META = {
   dashboard:['Dashboard','Campus safeguarding overview'],
   concerns:['Concerns','Triage, manage and track every case'],
+  archive:['Archive','Resolved cases, kept for the record'],
   students:['Students','Register with vulnerability flags'],
   tasks:['Actions','Outstanding safeguarding actions'],
   analytics:['Analytics','Trends, patterns and accountability'],
@@ -1615,6 +1638,7 @@ function go(view){
   // Fresh visit to a list view starts back at page 1 — a filter change or
   // data mutation while already on the view doesn't (see loadMore* / on*FilterChange).
   if(view==='concerns') concernsVisibleCount = LIST_PAGE_SIZE;
+  if(view==='archive') archiveVisibleCount = LIST_PAGE_SIZE;
   if(view==='students') studentsVisibleCount = LIST_PAGE_SIZE;
   if(view==='tasks') tasksVisibleCount = LIST_PAGE_SIZE;
 
@@ -1648,6 +1672,7 @@ function renderCurrentView(){
   else if(view==='students') renderStudents();
   else if(view==='tasks') renderTasks();
   else if(view==='concerns') renderConcerns();
+  else if(view==='archive') renderArchive();
   else if(view==='teacher-home') renderTeacherHome();
   else if(view==='users') renderUsers();
   else if(view==='send-report') renderSendReport();
@@ -1973,9 +1998,9 @@ function filteredConcerns(){
   const risk=$('conRisk')?.value||'All';
   const st=$('conStatus')?.value||'Active';
   return visibleCases().filter(c=>{
+    if(c.status==='Resolved') return false; // Resolved cases live in the Archive view, not Concerns
     if(cat!=='All' && c.category!==cat) return false;
     if(risk!=='All' && c.risk!==risk) return false;
-    if(st==='Active' && !isOpen(c)) return false;
     if(st!=='Active' && st!=='All' && c.status!==st) return false;
     if(q){ const hay=`${c.studentName} ${c.category} ${c.subcategory} ${c.reporter} ${c.description}`.toLowerCase(); if(!hay.includes(q)) return false; }
     return true;
@@ -2017,7 +2042,7 @@ function renderConcerns(){
   const list = full.slice(0, concernsVisibleCount);
   const remaining = full.length - list.length;
   if(conView==='board'){
-    const cols=[['New',c=>c.status==='New'],['In progress',c=>c.status==='In progress'],['Monitoring / Referred',c=>c.status==='Monitoring'||c.status==='Referred'],['Resolved',c=>c.status==='Resolved']];
+    const cols=[['New',c=>c.status==='New'],['In progress',c=>c.status==='In progress'],['Monitoring / Referred',c=>c.status==='Monitoring'||c.status==='Referred']];
     $('conBoard').innerHTML = cols.map(([title,fn])=>{
       const items=list.filter(fn);
       return `<div class="space-y-3"><div class="flex items-center justify-between px-1"><h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">${title}</h3><span class="text-[10px] font-bold bg-dim text-slate-500 px-2 py-0.5 rounded-full">${items.length}</span></div>
@@ -2035,6 +2060,40 @@ function renderConcerns(){
         <td class="px-4 py-3 hidden md:table-cell text-slate-400 font-medium">${fmtShort(c.date)}</td></tr>`).join('')||`<tr><td colspan="6" class="px-4 py-10 text-center text-slate-400 font-semibold">No concerns match your filters.</td></tr>`}</tbody></table>${loadMoreControl(remaining, 'loadMoreConcerns()')}`;
   }
   icons();
+}
+
+// ---------- ARCHIVE (resolved cases) ----------
+function filteredArchive(){
+  const q=($('arcSearch')?.value||'').toLowerCase();
+  const cat=$('arcCategory')?.value||'All';
+  return visibleCases().filter(c=>{
+    if(c.status!=='Resolved') return false;
+    if(cat!=='All' && c.category!==cat) return false;
+    if(q){ const hay=`${c.studentName} ${c.category} ${c.subcategory} ${c.reporter} ${c.description}`.toLowerCase(); if(!hay.includes(q)) return false; }
+    return true;
+  }).sort((a,b)=> new Date(b.date)-new Date(a.date));
+}
+function onArchiveFilterChange(){ archiveVisibleCount = LIST_PAGE_SIZE; renderArchive(); }
+const onArchiveFilterChangeDebounced = debounce(onArchiveFilterChange, 200);
+function loadMoreArchive(){ archiveVisibleCount += LIST_PAGE_SIZE; renderArchive(); }
+function renderArchive(){
+  const full=filteredArchive();
+  $('arcCount').textContent=full.length;
+  const list = full.slice(0, archiveVisibleCount);
+  const remaining = full.length - list.length;
+  $('arcGrid').innerHTML = (list.map(caseCard).join('') || `<div class="col-span-full">${emptyState('archive','No resolved cases yet','Cases move here automatically once marked Resolved.')}</div>`) + loadMoreControl(remaining, 'loadMoreArchive()');
+  icons();
+}
+function exportArchiveCSV(){
+  const rows=[['Student','Year','Class','Category','Subcategory','Risk','Status','Assignee','Reporter','Department','Strategies implemented','Strategy duration','Greatest impact','Little/no impact','SENDCo reason','Agencies','Logged','Description']];
+  filteredArchive().forEach(c=> {
+    const assigneeList = Array.isArray(c.assignee) ? c.assignee : String(c.assignee||'').split(',').map(s=>s.trim()).filter(Boolean);
+    rows.push([c.studentName,c.year,c.studentClass||'—',c.category,c.subcategory,c.risk,c.status,assigneeList.join('; '),c.reporter,c.department||'—',(c.strategies||[]).map(key=>STRATEGIES[key]?.label||key).join(' | '),
+      c.strategyDuration||'',c.strategyImpactPositive||'',c.strategyImpactNone||'',c.sendcoReason||'',
+      (c.agencies||[]).join(' | '),fmtDate(c.date),(c.description||'').replace(/\s+/g,' ')]);
+  });
+  downloadCSV(rows, `safeguarding-archive-${new Date().toISOString().slice(0,10)}.csv`);
+  logAudit('Report exported','Archive CSV'); persist(); toast('Export downloaded');
 }
 
 // ---------- STUDENTS ----------
@@ -2222,6 +2281,8 @@ function populateSelects(){
   $('studentList').innerHTML = DB.students.map(s=>`<option value="${esc(s.name)}">${esc(s.year)} · ${esc(s.form)}</option>`).join('');
   const catFilter=$('conCategory');
   if(catFilter) catFilter.innerHTML = '<option value="All">All categories</option>'+Object.keys(CATEGORIES).map(c=>`<option>${c}</option>`).join('');
+  const arcCatFilter=$('arcCategory');
+  if(arcCatFilter) arcCatFilter.innerHTML = '<option value="All">All categories</option>'+Object.keys(CATEGORIES).map(c=>`<option>${c}</option>`).join('');
 }
 
 // ---------- REPORT a concern ----------
