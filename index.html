@@ -196,24 +196,24 @@ tailwind.config = {
 <!-- ===================== TOPBAR ===================== -->
 <header class="sticky top-0 z-30 bg-surface/85 backdrop-blur-xl border-b border-line">
   <div class="h-20 px-4 sm:px-6 flex items-center justify-between gap-4">
-    <div class="flex items-center gap-3 min-w-0">
-      <button onclick="openMobileNav()" class="md:hidden w-10 h-10 shrink-0 grid place-items-center rounded-full hover:bg-dim text-slate-600" aria-label="Open menu"><i data-lucide="menu" class="w-5 h-5"></i></button>
-      <img src="https://icanskill.com/_ipx/_/img/logo/ican.svg" alt="I CAN School" class="md:hidden h-9 w-auto object-contain shrink-0">
+    <div class="flex items-center gap-2 sm:gap-3 min-w-0">
+      <button onclick="openMobileNav()" class="md:hidden w-9 h-9 shrink-0 grid place-items-center rounded-full hover:bg-dim text-slate-600" aria-label="Open menu"><i data-lucide="menu" class="w-5 h-5"></i></button>
+      <img src="https://icanskill.com/_ipx/_/img/logo/ican.svg" alt="I CAN School" class="hidden sm:block md:hidden h-9 w-auto object-contain shrink-0">
       <div class="min-w-0">
-        <h1 id="viewTitle" class="font-display font-extrabold text-lg sm:text-xl text-ink truncate">Dashboard</h1>
+        <h1 id="viewTitle" class="font-display font-extrabold text-base sm:text-xl text-ink truncate">Dashboard</h1>
         <p id="viewSub" class="text-[11px] sm:text-xs text-slate-500 font-medium truncate">Campus safeguarding overview</p>
       </div>
     </div>
-    <div class="flex items-center gap-2 sm:gap-3 shrink-0">
-      <button onclick="syncData()" class="h-11 px-3 sm:px-4 rounded-full bg-card border border-line hover:bg-dim text-slate-600 text-sm font-bold flex items-center gap-2 transition-colors shadow-soft"><i data-lucide="refresh-cw" id="syncIcon" class="w-4 h-4"></i><span class="hidden lg:inline">Sync</span></button>
-      <div id="userChip" class="h-11 pl-1.5 pr-3 sm:pr-4 rounded-full bg-card border border-line flex items-center gap-2.5 shadow-soft">
+    <div class="flex items-center gap-1.5 sm:gap-3 shrink-0">
+      <button onclick="syncData()" class="h-9 sm:h-11 px-2.5 sm:px-4 rounded-full bg-card border border-line hover:bg-dim text-slate-600 text-sm font-bold flex items-center gap-2 transition-colors shadow-soft"><i data-lucide="refresh-cw" id="syncIcon" class="w-4 h-4"></i><span class="hidden lg:inline">Sync</span></button>
+      <div id="userChip" class="h-9 sm:h-11 sm:pl-1.5 pr-0 sm:pr-3 lg:pr-4 rounded-full bg-transparent sm:bg-card border-0 sm:border sm:border-line flex items-center gap-2.5 shadow-none sm:shadow-soft">
         <div id="userAvatar" class="w-8 h-8 rounded-full bg-brandSoft text-onBrandSoft grid place-items-center text-xs font-extrabold">DS</div>
         <div class="hidden sm:block leading-tight text-left">
           <div id="userName" class="text-xs font-bold text-ink">Dana Stavrou</div>
           <div id="userRole" class="text-[10px] font-semibold text-brand uppercase tracking-wide">Lead DSL</div>
         </div>
       </div>
-      <button onclick="signOut()" title="Sign out" class="h-11 w-11 rounded-full bg-card border border-line hover:bg-critSoft hover:border-crit/20 text-slate-400 hover:text-crit flex items-center justify-center shadow-soft transition-colors shrink-0">
+      <button onclick="signOut()" title="Sign out" class="h-9 w-9 sm:h-11 sm:w-11 rounded-full bg-card border border-line hover:bg-critSoft hover:border-crit/20 text-slate-400 hover:text-crit flex items-center justify-center shadow-soft transition-colors shrink-0">
         <i data-lucide="log-out" class="w-4 h-4"></i>
       </button>
     </div>
