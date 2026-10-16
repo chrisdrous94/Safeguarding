@@ -6088,9 +6088,12 @@ function signOut(){
   // Reset to code mode
   authSetMode('code');
 
-  // Hide main UI
+  // Hide main UI. The sidebar's own "hidden md:flex" classes are what keep
+  // it mobile-only-hidden at every screen size — toggling an inline style
+  // here (instead of the "hidden" class, which is the same token) means
+  // this defense-in-depth hide can never collide with that responsive rule.
   const sidebar = document.querySelector('aside');
-  if(sidebar) sidebar.classList.add('hidden');
+  if(sidebar) sidebar.style.display = 'none';
   const bottomNav = $('mobileBottomNav');
   if(bottomNav) bottomNav.classList.add('hidden');
 
@@ -6128,8 +6131,11 @@ function applyRoleLayout(){
   const admin=IS_ADMIN();
   const dslOrPrincipal=IS_DSL_OR_PRINCIPAL();
   const sidebar=document.querySelector('aside');
-  // Show sidebar to everyone — role-based menu visibility is handled by .admin-nav
-  if(sidebar){ sidebar.classList.add('md:flex'); sidebar.classList.remove('hidden'); }
+  // Show sidebar to everyone — role-based menu visibility is handled by
+  // .admin-nav. Clears signOut()'s inline display:none (not the hidden/
+  // md:flex classes — see the matching comment there) so the sidebar's own
+  // responsive classes go back to deciding mobile-vs-desktop visibility.
+  if(sidebar) sidebar.style.display = '';
   $('mobileBottomNav')?.classList.remove('hidden');
   document.querySelectorAll('.admin-nav').forEach(el=>el.classList.toggle('hidden',!admin));
   
