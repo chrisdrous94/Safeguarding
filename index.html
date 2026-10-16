@@ -157,10 +157,18 @@ tailwind.config = {
   </div>
 </div>
 
-<!-- ===================== SIDEBAR (desktop) ===================== -->
-<aside class="hidden md:flex md:flex-col w-64 shrink-0 bg-card border-r border-line h-screen sticky top-0">
-  <div class="px-5 h-20 flex items-center justify-center border-b border-line">
+<!-- ===================== SIDEBAR (desktop) / NAV DRAWER (mobile) =====================
+     One element serves both roles: a static column at md+ (sticky, in-flow),
+     and an off-canvas drawer below md (fixed, slid in via openMobileNav()) —
+     see that function and closeMobileNav() for why this stays a single
+     element instead of a duplicated mobile copy (duplicate nav buttons would
+     need their own badge-count ids and role-visibility wiring, kept in sync
+     by hand forever). -->
+<div id="mobileNavScrim" onclick="closeMobileNav()" class="md:hidden fixed inset-0 z-[135] hidden bg-ink/50 backdrop-blur-sm opacity-0 transition-opacity"></div>
+<aside id="sidebarNav" class="fixed inset-y-0 left-0 z-[140] w-72 max-w-[85vw] -translate-x-full transition-transform duration-300 ease-out flex flex-col border-r-0 shadow-lift md:shadow-none md:sticky md:top-0 md:bottom-auto md:left-auto md:translate-x-0 md:z-auto md:w-64 md:max-w-none md:shrink-0 md:h-screen md:border-r bg-card border-line">
+  <div class="px-5 h-20 flex items-center justify-between md:justify-center border-b border-line">
     <img src="https://icanskill.com/_ipx/_/img/logo/ican.svg" alt="I CAN School Safeguarding" class="h-10 w-full max-w-[210px] object-contain">
+    <button onclick="closeMobileNav()" class="md:hidden w-9 h-9 shrink-0 grid place-items-center rounded-full hover:bg-dim text-slate-500" aria-label="Close menu"><i data-lucide="x" class="w-5 h-5"></i></button>
   </div>
   <nav class="flex-1 p-3 space-y-1 overflow-y-auto scroll-thin">
     <p class="px-3 pt-3 pb-1.5 text-[10px] font-bold tracking-widest uppercase text-slate-400">Workspace</p>
@@ -177,9 +185,9 @@ tailwind.config = {
     <button data-nav="users" class="admin-nav nav-btn hidden w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-600 hover:bg-dim"><i data-lucide="users-cog" class="nav-ico w-[18px] h-[18px] text-slate-400"></i>Users</button>
   </nav>
   <div class="p-3 border-t border-line">
-    <button onclick="openReport()" class="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-2xl bg-brand hover:bg-brandDark text-white text-sm font-bold shadow-soft transition-colors"><i data-lucide="plus" class="w-4 h-4"></i>Report a concern</button>
-    <button onclick="openSettingsModal()" class="mt-2 w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:bg-dim"><i data-lucide="settings" class="w-[18px] h-[18px] text-slate-400"></i>Settings</button>
-    <button onclick="signOut()" class="mt-1 w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:bg-critSoft hover:text-crit transition-colors"><i data-lucide="log-out" class="w-[18px] h-[18px]"></i>Sign out</button>
+    <button onclick="closeMobileNav(); openReport()" class="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-2xl bg-brand hover:bg-brandDark text-white text-sm font-bold shadow-soft transition-colors"><i data-lucide="plus" class="w-4 h-4"></i>Report a concern</button>
+    <button onclick="closeMobileNav(); openSettingsModal()" class="mt-2 w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:bg-dim"><i data-lucide="settings" class="w-[18px] h-[18px] text-slate-400"></i>Settings</button>
+    <button onclick="closeMobileNav(); signOut()" class="mt-1 w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:bg-critSoft hover:text-crit transition-colors"><i data-lucide="log-out" class="w-[18px] h-[18px]"></i>Sign out</button>
   </div>
 </aside>
 
@@ -189,6 +197,7 @@ tailwind.config = {
 <header class="sticky top-0 z-30 bg-surface/85 backdrop-blur-xl border-b border-line">
   <div class="h-20 px-4 sm:px-6 flex items-center justify-between gap-4">
     <div class="flex items-center gap-3 min-w-0">
+      <button onclick="openMobileNav()" class="md:hidden w-10 h-10 shrink-0 grid place-items-center rounded-full hover:bg-dim text-slate-600" aria-label="Open menu"><i data-lucide="menu" class="w-5 h-5"></i></button>
       <img src="https://icanskill.com/_ipx/_/img/logo/ican.svg" alt="I CAN School" class="md:hidden h-9 w-auto object-contain shrink-0">
       <div class="min-w-0">
         <h1 id="viewTitle" class="font-display font-extrabold text-lg sm:text-xl text-ink truncate">Dashboard</h1>
@@ -1635,6 +1644,7 @@ const VIEW_META = {
   families:['Families','Siblings grouped together with a combined risk picture']
 };
 function go(view){
+  closeMobileNav(); // no-op if it wasn't open — any navigation should dismiss it
   // Permission checks
   if(view==='send-report' && !IS_DSL_OR_PRINCIPAL()){
     toast('You do not have permission to view this report');
@@ -6043,6 +6053,7 @@ function initIdleWatchers(){
 
 function signOut(){
   stopIdleTimer();
+  closeMobileNav(); // reset drawer open/scrim state in case it was left open
   if(ME.token && CAN_USE_APPS_SCRIPT()){
     scriptCall('logout', {}).catch(()=>{}); // best-effort; local state is cleared regardless
   }
@@ -6125,6 +6136,24 @@ function handleSessionExpired(){
   const overlay = $('authOverlay');
   if(overlay){ overlay.classList.remove('hidden'); overlay.style.opacity='1'; overlay.style.pointerEvents='auto'; }
 }
+
+// Mobile nav drawer — see the matching comment on the <aside> itself for why
+// this is the same element as the desktop sidebar rather than a duplicate.
+function openMobileNav(){
+  $('sidebarNav').style.transform = 'translateX(0)';
+  $('sidebarNav').setAttribute('aria-hidden','false');
+  const scrim = $('mobileNavScrim');
+  if(scrim){ scrim.classList.remove('hidden'); requestAnimationFrame(()=>scrim.classList.remove('opacity-0')); }
+  document.body.classList.add('overflow-hidden');
+}
+function closeMobileNav(){
+  $('sidebarNav').style.transform = '';
+  $('sidebarNav').setAttribute('aria-hidden','true');
+  const scrim = $('mobileNavScrim');
+  if(scrim){ scrim.classList.add('opacity-0'); setTimeout(()=>scrim.classList.add('hidden'),200); }
+  document.body.classList.remove('overflow-hidden');
+}
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeMobileNav(); });
 
 function applyRoleLayout(){
   const teacher=IS_TEACHER();
