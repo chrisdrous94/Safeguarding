@@ -221,7 +221,7 @@ tailwind.config = {
   </div>
 </header>
 
-<main class="flex-1 w-full max-w-[1280px] mx-auto px-4 sm:px-6 py-6 pb-28 md:pb-10">
+<main class="flex-1 w-full max-w-[1280px] mx-auto px-4 sm:px-6 py-6 pb-[max(2.5rem,env(safe-area-inset-bottom))]">
 <!-- ===================== DASHBOARD ===================== -->
 <section data-view="dashboard" class="fade space-y-5">
   <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
@@ -663,20 +663,6 @@ tailwind.config = {
   </div>
 </section>
 </main>
-
-<!-- ===================== MOBILE BOTTOM NAV ===================== -->
-<nav id="mobileBottomNav" class="md:hidden fixed bottom-0 inset-x-0 z-40 bg-card border-t border-line pb-safe shadow-[0_-6px_24px_-12px_rgba(15,27,26,.18)]">
-  <div class="grid grid-cols-6 h-[68px]">
-    <button data-mnav="dashboard" class="mnav flex flex-col items-center justify-center gap-1 text-[10px] font-bold text-brand"><i data-lucide="layout-dashboard" class="w-5 h-5"></i>Home</button>
-    <button data-mnav="concerns" class="mnav flex flex-col items-center justify-center gap-1 text-[10px] font-semibold text-slate-400"><i data-lucide="folder-open" class="w-5 h-5"></i>Concerns</button>
-    <button data-mnav="archive" class="mnav flex flex-col items-center justify-center gap-1 text-[10px] font-semibold text-slate-400"><i data-lucide="archive" class="w-5 h-5"></i>Archive</button>
-    <div class="relative">
-      <button onclick="openReport()" aria-label="Report a concern" class="absolute left-1/2 -translate-x-1/2 -top-5 w-12 h-12 rounded-2xl bg-brand hover:bg-brandDark text-white grid place-items-center shadow-lift"><i data-lucide="plus" class="w-6 h-6"></i></button>
-    </div>
-    <button data-mnav="students" class="mnav flex flex-col items-center justify-center gap-1 text-[10px] font-semibold text-slate-400"><i data-lucide="users-round" class="w-5 h-5"></i>Students</button>
-    <button data-mnav="tasks" class="mnav flex flex-col items-center justify-center gap-1 text-[10px] font-semibold text-slate-400"><i data-lucide="list-checks" class="w-5 h-5"></i>Actions</button>
-  </div>
-</nav>
 </div>
 
 <!-- ===================== REPORT A CONCERN MODAL ===================== -->
@@ -1688,10 +1674,6 @@ function go(view){
   document.querySelectorAll('.nav-btn').forEach(b=>{
     const on=b.dataset.nav===view; b.classList.toggle('nav-active',on);
     b.querySelector('.nav-ico')?.classList.toggle('text-slate-400',!on);
-  });
-  document.querySelectorAll('.mnav').forEach(b=>{
-    const on=b.dataset.mnav===view;
-    b.className=`mnav flex flex-col items-center justify-center gap-1 text-[10px] ${on?'font-bold text-brand':'font-semibold text-slate-400'}`;
   });
   const meta = VIEW_META[view] || ['View',''];
   const [t,s] = meta;
@@ -6127,8 +6109,6 @@ function signOut(){
   // this defense-in-depth hide can never collide with that responsive rule.
   const sidebar = document.querySelector('aside');
   if(sidebar) sidebar.style.display = 'none';
-  const bottomNav = $('mobileBottomNav');
-  if(bottomNav) bottomNav.classList.add('hidden');
 
   // Hide admin nav
   document.querySelectorAll('.admin-nav').forEach(el => el.classList.add('hidden'));
@@ -6187,7 +6167,6 @@ function applyRoleLayout(){
   // md:flex classes — see the matching comment there) so the sidebar's own
   // responsive classes go back to deciding mobile-vs-desktop visibility.
   if(sidebar) sidebar.style.display = '';
-  $('mobileBottomNav')?.classList.remove('hidden');
   document.querySelectorAll('.admin-nav').forEach(el=>el.classList.toggle('hidden',!admin));
   
   // Show whole school report only to DSL and Principal (not Heads of Primary/Secondary)
@@ -6486,7 +6465,6 @@ function boot(){
   $('setUrl').value=SCRIPT_URL; $('scriptCode').textContent=APPSCRIPT;
   setSource(SOURCE);
   document.querySelectorAll('[data-nav]').forEach(b=> b.addEventListener('click',()=>go(b.dataset.nav)));
-  document.querySelectorAll('[data-mnav]').forEach(b=> b.addEventListener('click',()=>go(b.dataset.mnav)));
   initIdleWatchers();
   icons();
   if(checkSavedAuth()){
