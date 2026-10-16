@@ -48,6 +48,7 @@ tailwind.config = {
 </script>
 <style>
   *{ -webkit-tap-highlight-color:transparent; }
+  html,body{ overflow-x:hidden; max-width:100vw; }
   body{ font-family:'Inter',sans-serif; background:#f4f7f6; color:#0f1b1a; }
   .font-display{ font-family:'Sora','Inter',sans-serif; letter-spacing:-.02em; }
   ::-webkit-scrollbar{ width:7px; height:7px; }
@@ -202,7 +203,7 @@ tailwind.config = {
 <main class="flex-1 w-full max-w-[1280px] mx-auto px-4 sm:px-6 py-6 pb-28 md:pb-10">
 <!-- ===================== DASHBOARD ===================== -->
 <section data-view="dashboard" class="fade space-y-5">
-  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
     <div class="bg-card rounded-3xl border border-line shadow-soft p-4 sm:p-5">
       <div class="flex items-center justify-between mb-2"><span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Open concerns</span><i data-lucide="folder-open" class="w-4 h-4 text-brand"></i></div>
       <div class="font-display font-extrabold text-3xl text-ink" id="kpiOpen">0</div>
@@ -226,8 +227,8 @@ tailwind.config = {
     </div>
   </div>
 
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-    <div class="lg:col-span-2 bg-card rounded-4xl border border-line shadow-soft p-5 sm:p-6">
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="md:col-span-2 bg-card rounded-4xl border border-line shadow-soft p-5 sm:p-6">
       <div class="flex items-center justify-between mb-5">
         <div><h3 class="font-display font-bold text-base text-ink">Priority watchlist</h3><p class="text-xs text-slate-400 font-medium">Students carrying the highest current risk</p></div>
         <button onclick="go('concerns')" class="text-xs font-bold text-brand hover:text-brandDark flex items-center gap-1">View all <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i></button>
@@ -241,12 +242,12 @@ tailwind.config = {
     </div>
   </div>
 
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
     <div class="bg-card rounded-4xl border border-line shadow-soft p-5 sm:p-6">
       <h3 class="font-display font-bold text-base text-ink mb-4">Your next actions</h3>
       <div id="myActions" class="space-y-2.5"></div>
     </div>
-    <div class="lg:col-span-2 bg-card rounded-4xl border border-line shadow-soft p-5 sm:p-6">
+    <div class="md:col-span-2 bg-card rounded-4xl border border-line shadow-soft p-5 sm:p-6">
       <div class="flex items-center justify-between mb-4"><h3 class="font-display font-bold text-base text-ink">Recent activity</h3><span class="text-[11px] font-semibold text-slate-400">last 14 days</span></div>
       <div id="recentActivity" class="relative timeline pl-8 space-y-4"></div>
     </div>
@@ -279,7 +280,7 @@ tailwind.config = {
       <button id="vList" onclick="setConView('list')" class="px-3 py-1.5 rounded-full text-slate-500">List</button>
     </div>
   </div>
-  <div id="conBoard" class="grid grid-cols-1 lg:grid-cols-3 gap-4"></div>
+  <div id="conBoard" class="grid grid-cols-1 md:grid-cols-3 gap-4"></div>
   <div id="conList" class="hidden bg-card rounded-4xl border border-line shadow-soft overflow-hidden"></div>
 </section>
 
@@ -300,7 +301,7 @@ tailwind.config = {
   <div class="flex items-center justify-between px-1">
     <p class="text-xs font-bold text-slate-400 uppercase tracking-wider"><span id="arcCount">0</span> resolved cases</p>
   </div>
-  <div id="arcGrid" class="grid grid-cols-1 lg:grid-cols-3 gap-4"></div>
+  <div id="arcGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
 </section>
 
 <!-- ===================== STUDENTS ===================== -->
@@ -361,14 +362,14 @@ tailwind.config = {
 
 <!-- ===================== ANALYTICS ===================== -->
 <section data-view="analytics" class="hidden fade space-y-4">
-  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
     <div class="bg-card rounded-3xl border border-line shadow-soft p-4"><div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">Total logged</div><div class="font-display font-extrabold text-2xl text-ink" id="anTotal">0</div></div>
     <div class="bg-card rounded-3xl border border-line shadow-soft p-4"><div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">Resolved</div><div class="font-display font-extrabold text-2xl text-ok" id="anResolved">0</div></div>
     <div class="bg-card rounded-3xl border border-line shadow-soft p-4"><div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">Avg. resolution</div><div class="font-display font-extrabold text-2xl text-ink" id="anAvgDays">—</div></div>
     <div class="bg-card rounded-3xl border border-line shadow-soft p-4"><div class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">Students flagged</div><div class="font-display font-extrabold text-2xl text-brand" id="anStudents">0</div></div>
   </div>
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-    <div class="lg:col-span-2 bg-card rounded-4xl border border-line shadow-soft p-5 sm:p-6">
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="md:col-span-2 bg-card rounded-4xl border border-line shadow-soft p-5 sm:p-6">
       <h3 class="font-display font-bold text-base text-ink mb-1">Concerns over time</h3><p class="text-xs text-slate-400 font-medium mb-4">Monthly volume by risk level</p>
       <div class="relative h-[280px]"><canvas id="trendChart"></canvas></div>
     </div>
@@ -377,7 +378,7 @@ tailwind.config = {
       <div class="relative h-[280px]"><canvas id="agencyChart"></canvas></div>
     </div>
   </div>
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <div class="bg-card rounded-4xl border border-line shadow-soft p-5 sm:p-6">
       <h3 class="font-display font-bold text-base text-ink mb-1">Concern type breakdown</h3><p class="text-xs text-slate-400 font-medium mb-4">All recorded concerns</p>
       <div class="relative h-[300px]"><canvas id="typeBarChart"></canvas></div>
@@ -494,7 +495,7 @@ tailwind.config = {
     <div id="srCaseLogList" class="divide-y divide-line max-h-[340px] overflow-y-auto scroll-thin"></div>
   </div>
 
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <!-- 2. Referral overview -->
     <div class="bg-card rounded-4xl border border-line shadow-soft p-5 sm:p-6">
       <h3 class="font-display font-bold text-base text-ink mb-1">2. Referral Overview</h3>
@@ -515,7 +516,7 @@ tailwind.config = {
     </div>
   </div>
 
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <!-- 4. Safeguarding concerns by category -->
     <div class="bg-card rounded-4xl border border-line shadow-soft p-5 sm:p-6">
       <h3 class="font-display font-bold text-base text-ink mb-1">4. Safeguarding Concerns (by category)</h3>
@@ -536,10 +537,10 @@ tailwind.config = {
   <!-- 6. Key statistics -->
   <div class="bg-card rounded-4xl border border-line shadow-soft overflow-hidden">
     <div class="px-5 py-3 bg-brandDark text-white text-sm font-display font-bold">6. Key Statistics</div>
-    <div class="grid grid-cols-2 lg:grid-cols-5 gap-4 p-5 sm:p-6" id="srKeyStats"></div>
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 p-5 sm:p-6" id="srKeyStats"></div>
   </div>
 
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <!-- 7. Traffic light indicators -->
     <div class="bg-card rounded-4xl border border-line shadow-soft p-5 sm:p-6">
       <h3 class="font-display font-bold text-base text-ink mb-1">7. Traffic Light Indicators</h3>
@@ -695,7 +696,7 @@ tailwind.config = {
       </div>
       <div>
         <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Risk level</label>
-        <div class="grid grid-cols-4 gap-2" id="rRiskGrid">
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2" id="rRiskGrid">
           <button type="button" data-risk="Low" class="rrisk h-12 rounded-2xl border-2 border-line bg-card text-sm font-bold text-low">Low</button>
           <button type="button" data-risk="Medium" class="rrisk h-12 rounded-2xl border-2 border-line bg-card text-sm font-bold text-med">Medium</button>
           <button type="button" data-risk="High" class="rrisk h-12 rounded-2xl border-2 border-line bg-card text-sm font-bold text-high">High</button>
@@ -2313,7 +2314,7 @@ function openReport(prefillName){
   renderStrategyCheckboxes();
   renderDurationButtons();
   $('rCategoryGrid').innerHTML = Object.entries(CATEGORIES).map(([name,m])=>`
-    <button type="button" data-cat="${esc(name)}" aria-pressed="false" onclick="pickCategory('${esc(name)}')" class="rcat flex items-center gap-2 px-3 h-12 rounded-2xl border-2 border-line bg-card text-left transition-colors hover:border-brand/40 hover:bg-dim/40">
+    <button type="button" data-cat="${esc(name)}" aria-pressed="false" onclick="pickCategory('${esc(name)}')" class="rcat flex items-center gap-2 px-3 py-2.5 min-h-12 rounded-2xl border-2 border-line bg-card text-left transition-colors hover:border-brand/40 hover:bg-dim/40">
       <i data-lucide="${m.icon}" class="w-4 h-4 text-${m.color} shrink-0"></i><span class="text-xs font-bold text-slate-700 leading-tight">${esc(name)}</span></button>`).join('');
   document.querySelectorAll('.rrisk').forEach(b=>{ b.onclick=()=>pickRisk(b.dataset.risk); });
   pickRisk('Medium');
@@ -2336,7 +2337,7 @@ function pickCategory(name){
   document.querySelectorAll('.rcat').forEach(b=>{
     const on = b.dataset.cat===name;
     b.setAttribute('aria-pressed', on ? 'true' : 'false');
-    b.className = `rcat flex items-center gap-2 px-3 h-12 rounded-2xl border-2 text-left transition-colors ${on ? 'border-brand bg-brandSoft text-onBrandSoft ring-1 ring-brand/10' : 'border-line bg-card text-slate-700 hover:border-brand/40 hover:bg-dim/40'}`;
+    b.className = `rcat flex items-center gap-2 px-3 py-2.5 min-h-12 rounded-2xl border-2 text-left transition-colors ${on ? 'border-brand bg-brandSoft text-onBrandSoft ring-1 ring-brand/10' : 'border-line bg-card text-slate-700 hover:border-brand/40 hover:bg-dim/40'}`;
     const icon = b.querySelector('i[data-lucide]');
     const label = b.querySelector('span');
     if(icon) icon.className = `w-4 h-4 shrink-0 ${on ? 'text-brandDark' : icon.className.includes('text-') ? icon.className.split(' ').find(x=>x.startsWith('text-')) : 'text-slate-500'}`;
@@ -2379,12 +2380,12 @@ function toggleStrategy(key){
 }
 function renderDurationButtons(){
   $('rDurationGrid').innerHTML = STRATEGY_DURATIONS.map(d=>`
-    <button type="button" data-duration="${esc(d)}" onclick="pickDuration('${d}')" class="rduration h-11 rounded-2xl border-2 border-line bg-card text-[11px] sm:text-xs font-bold text-slate-700 hover:border-brand/40 hover:bg-dim/40 transition-colors">${esc(d)}</button>`).join('');
+    <button type="button" data-duration="${esc(d)}" onclick="pickDuration('${d}')" class="rduration min-h-11 px-2 py-1.5 rounded-2xl border-2 border-line bg-card text-[11px] sm:text-xs font-bold text-slate-700 hover:border-brand/40 hover:bg-dim/40 transition-colors">${esc(d)}</button>`).join('');
 }
 function pickDuration(v){
   $('rStrategyDuration').value=v;
   document.querySelectorAll('.rduration').forEach(b=>{ const on=b.dataset.duration===v;
-    b.className=`rduration h-11 rounded-2xl border-2 text-[11px] sm:text-xs font-bold transition-colors ${on?'border-brand bg-brandSoft text-onBrandSoft':'border-line bg-card text-slate-700 hover:border-brand/40 hover:bg-dim/40'}`; });
+    b.className=`rduration min-h-11 px-2 py-1.5 rounded-2xl border-2 text-[11px] sm:text-xs font-bold transition-colors ${on?'border-brand bg-brandSoft text-onBrandSoft':'border-line bg-card text-slate-700 hover:border-brand/40 hover:bg-dim/40'}`; });
 }
 async function submitConcern(){
   const name=$('rStudent').value.trim();
@@ -6274,19 +6275,19 @@ async function renderUsers(){
       const full=`${esc(u.firstName)} ${esc(u.lastName)}`;
       const rc=roleColor[u.role]||'low';
       const ll=u.lastLogin?fmtDate(u.lastLogin):'Never';
-      return `<div class="flex items-center gap-3 px-5 py-3.5 hover:bg-dim/40 transition-colors ${u.active?'':'opacity-55'}">
+      return `<div class="flex items-center flex-wrap gap-3 px-5 py-3.5 hover:bg-dim/40 transition-colors ${u.active?'':'opacity-55'}">
         <div class="w-10 h-10 rounded-full bg-brandSoft text-onBrandSoft grid place-items-center font-bold text-xs shrink-0">${initials(u.firstName+' '+u.lastName)}</div>
-        <div class="min-w-0 flex-1">
+        <div class="min-w-[160px] flex-1">
           <div class="flex items-center gap-2 flex-wrap">
             <span class="font-bold text-sm text-ink">${full}</span>
             <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-${rc}Soft text-${rc}">${esc(roleLabel(u.role))}</span>
             ${u.active?'':`<span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-dim text-slate-400">Revoked</span>`}
           </div>
-          <div class="text-[11px] font-medium ${u.email?'text-slate-400':'text-med font-bold'}">${u.email?esc(u.email):'No email — notifications won’t be delivered'}</div>
+          <div class="text-[11px] font-medium ${u.email?'text-slate-400':'text-med font-bold'} truncate">${u.email?esc(u.email):'No email — notifications won’t be delivered'}</div>
           <div class="text-[11px] text-slate-400 font-medium">Last login: ${ll}</div>
         </div>
         <div class="hidden sm:block text-[11px] text-slate-400 font-medium w-[100px] shrink-0">${ll}</div>
-        <div class="flex items-center gap-1 shrink-0">
+        <div class="flex items-center gap-1 shrink-0 ml-auto sm:ml-0">
           <button onclick="openEditUser('${u.id}','${esc(u.firstName)}','${esc(u.lastName)}','${esc(u.role)}','${esc(u.email||'')}')" title="Edit" class="w-9 h-9 rounded-full hover:bg-dim text-slate-400 hover:text-brand grid place-items-center transition-colors"><i data-lucide="pencil" class="w-4 h-4"></i></button>
           <button onclick="adminRegenCode('${u.id}','${full}')" title="New access code" class="w-9 h-9 rounded-full hover:bg-dim text-slate-400 hover:text-brand grid place-items-center transition-colors"><i data-lucide="key-round" class="w-4 h-4"></i></button>
           <button onclick="adminToggle('${u.id}','${full}',${u.active})" title="${u.active?'Revoke access':'Restore access'}" class="w-9 h-9 rounded-full hover:bg-${u.active?'crit':'ok'}Soft text-slate-400 hover:text-${u.active?'crit':'ok'} grid place-items-center transition-colors"><i data-lucide="${u.active?'shield-off':'shield-check'}" class="w-4 h-4"></i></button>
