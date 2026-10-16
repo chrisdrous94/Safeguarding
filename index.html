@@ -4,6 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>I CAN School · Safeguarding</title>
+<meta name="description" content="KCSIE-aligned safeguarding and SEND case-management platform for I CAN School.">
+<meta name="theme-color" content="#0d7a6f">
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="./icons/icon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="./icons/icon-16.png" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="./icons/icon-180.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Safeguarding">
 <!--
   CSP note: this is a single static HTML file with one large inline script block
   and no build/templating step, so script-src can't drop 'unsafe-inline'
@@ -6439,6 +6450,17 @@ function boot(){
   // Auth overlay stays visible until successful login
 }
 document.addEventListener('DOMContentLoaded', boot);
+
+// ---------- PWA install ----------
+// Registered after load (not blocking first paint) with a relative scope so
+// it works whether this is hosted at a domain root or a GitHub Pages
+// subpath. See sw.js for the caching strategy — the worker never touches
+// the Apps Script backend calls, only the static shell.
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('./sw.js', {scope:'./'}).catch(err=>console.warn('Service worker registration failed', err));
+  });
+}
 </script>
 </body>
 </html>
