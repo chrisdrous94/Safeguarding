@@ -186,6 +186,7 @@ tailwind.config = {
   </nav>
   <div class="p-3 border-t border-line">
     <button onclick="closeMobileNav(); openReport()" class="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-2xl bg-brand hover:bg-brandDark text-white text-sm font-bold shadow-soft transition-colors"><i data-lucide="plus" class="w-4 h-4"></i>Report a concern</button>
+    <button onclick="closeMobileNav(); syncData()" class="md:hidden mt-2 w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:bg-dim"><i data-lucide="refresh-cw" class="w-[18px] h-[18px] text-slate-400"></i>Sync now</button>
     <button onclick="closeMobileNav(); openSettingsModal()" class="mt-2 w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:bg-dim"><i data-lucide="settings" class="w-[18px] h-[18px] text-slate-400"></i>Settings</button>
     <button onclick="closeMobileNav(); signOut()" class="mt-1 w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:bg-critSoft hover:text-crit transition-colors"><i data-lucide="log-out" class="w-[18px] h-[18px]"></i>Sign out</button>
   </div>
@@ -205,7 +206,7 @@ tailwind.config = {
       </div>
     </div>
     <div class="flex items-center gap-1.5 sm:gap-3 shrink-0">
-      <button onclick="syncData()" class="h-9 sm:h-11 px-2.5 sm:px-4 rounded-full bg-card border border-line hover:bg-dim text-slate-600 text-sm font-bold flex items-center gap-2 transition-colors shadow-soft"><i data-lucide="refresh-cw" id="syncIcon" class="w-4 h-4"></i><span class="hidden lg:inline">Sync</span></button>
+      <button onclick="syncData()" class="hidden sm:flex h-11 px-3 sm:px-4 rounded-full bg-card border border-line hover:bg-dim text-slate-600 text-sm font-bold items-center gap-2 transition-colors shadow-soft"><i data-lucide="refresh-cw" id="syncIcon" class="w-4 h-4"></i><span class="hidden lg:inline">Sync</span></button>
       <div id="userChip" class="h-9 sm:h-11 sm:pl-1.5 pr-0 sm:pr-3 lg:pr-4 rounded-full bg-transparent sm:bg-card border-0 sm:border sm:border-line flex items-center gap-2.5 shadow-none sm:shadow-soft">
         <div id="userAvatar" class="w-8 h-8 rounded-full bg-brandSoft text-onBrandSoft grid place-items-center text-xs font-extrabold">DS</div>
         <div class="hidden sm:block leading-tight text-left">
@@ -213,7 +214,7 @@ tailwind.config = {
           <div id="userRole" class="text-[10px] font-semibold text-brand uppercase tracking-wide">Lead DSL</div>
         </div>
       </div>
-      <button onclick="signOut()" title="Sign out" class="h-9 w-9 sm:h-11 sm:w-11 rounded-full bg-card border border-line hover:bg-critSoft hover:border-crit/20 text-slate-400 hover:text-crit flex items-center justify-center shadow-soft transition-colors shrink-0">
+      <button onclick="signOut()" title="Sign out" class="hidden sm:flex h-11 w-11 rounded-full bg-card border border-line hover:bg-critSoft hover:border-crit/20 text-slate-400 hover:text-crit items-center justify-center shadow-soft transition-colors shrink-0">
         <i data-lucide="log-out" class="w-4 h-4"></i>
       </button>
     </div>
@@ -665,10 +666,13 @@ tailwind.config = {
 
 <!-- ===================== MOBILE BOTTOM NAV ===================== -->
 <nav id="mobileBottomNav" class="md:hidden fixed bottom-0 inset-x-0 z-40 bg-card border-t border-line pb-safe shadow-[0_-6px_24px_-12px_rgba(15,27,26,.18)]">
-  <div class="grid grid-cols-5 h-[68px]">
+  <div class="grid grid-cols-6 h-[68px]">
     <button data-mnav="dashboard" class="mnav flex flex-col items-center justify-center gap-1 text-[10px] font-bold text-brand"><i data-lucide="layout-dashboard" class="w-5 h-5"></i>Home</button>
     <button data-mnav="concerns" class="mnav flex flex-col items-center justify-center gap-1 text-[10px] font-semibold text-slate-400"><i data-lucide="folder-open" class="w-5 h-5"></i>Concerns</button>
-    <button onclick="openReport()" class="flex flex-col items-center justify-center"><span class="w-12 h-12 -mt-5 rounded-2xl bg-brand text-white grid place-items-center shadow-lift"><i data-lucide="plus" class="w-6 h-6"></i></span></button>
+    <button data-mnav="archive" class="mnav flex flex-col items-center justify-center gap-1 text-[10px] font-semibold text-slate-400"><i data-lucide="archive" class="w-5 h-5"></i>Archive</button>
+    <div class="relative">
+      <button onclick="openReport()" aria-label="Report a concern" class="absolute left-1/2 -translate-x-1/2 -top-5 w-12 h-12 rounded-2xl bg-brand hover:bg-brandDark text-white grid place-items-center shadow-lift"><i data-lucide="plus" class="w-6 h-6"></i></button>
+    </div>
     <button data-mnav="students" class="mnav flex flex-col items-center justify-center gap-1 text-[10px] font-semibold text-slate-400"><i data-lucide="users-round" class="w-5 h-5"></i>Students</button>
     <button data-mnav="tasks" class="mnav flex flex-col items-center justify-center gap-1 text-[10px] font-semibold text-slate-400"><i data-lucide="list-checks" class="w-5 h-5"></i>Actions</button>
   </div>
@@ -683,76 +687,83 @@ tailwind.config = {
       <div><h3 class="font-display font-bold text-ink">Report a concern</h3><p class="text-[11px] text-slate-400 font-medium">Logged immediately to the DSL team</p></div></div>
       <button onclick="closeReportModal()" class="w-9 h-9 grid place-items-center rounded-full hover:bg-dim text-slate-500"><i data-lucide="x" class="w-5 h-5"></i></button>
     </div>
-    <div class="overflow-y-auto scroll-thin px-5 sm:px-7 py-5 space-y-5">
-      <div>
-        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Student</label>
-        <div class="relative"><i data-lucide="user-search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
-        <input id="rStudent" list="studentList" oninput="onReportStudentInput()" placeholder="Start typing a name…" class="w-full h-12 pl-11 pr-4 rounded-2xl bg-card border border-line text-sm font-semibold"></div>
-        <datalist id="studentList"></datalist>
-        <p class="text-[11px] text-slate-400 mt-1.5 font-medium">New name? It will be added to the register automatically.</p>
-      </div>
-      <div>
-        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Class</label>
-        <input id="rClass" placeholder="e.g. 4B, Year 9 Maple" class="w-full h-12 px-4 rounded-2xl bg-card border border-line text-sm font-semibold">
-      </div>
-      <div>
-        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Department</label>
-        <select id="rDepartment" class="w-full h-12 px-4 rounded-2xl bg-card border border-line text-sm font-semibold text-slate-700">
-          <option value="">Select department…</option>
-          <option value="Primary">Primary</option>
-          <option value="Secondary">Secondary</option>
-          <option value="Extra">Extra</option>
-          <option value="Camps">Camps</option>
-          <option value="Weekend Club">Weekend Club</option>
-        </select>
-      </div>
-      <div>
-        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Category of concern</label>
-        <div id="rCategoryGrid" class="grid grid-cols-2 sm:grid-cols-3 gap-2"></div>
-        <input type="hidden" id="rCategory">
-        <div id="rSubWrap" class="hidden mt-3">
-          <select id="rSubcategory" class="w-full h-12 px-4 rounded-2xl bg-card border border-line text-sm font-semibold text-slate-700"></select>
+    <div class="overflow-y-auto scroll-thin px-5 sm:px-7 py-5 space-y-6">
+      <div class="space-y-4">
+        <div class="flex items-center gap-2 pb-1.5 border-b border-line"><i data-lucide="user" class="w-3.5 h-3.5 text-brand"></i><h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider">Who's involved</h4></div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Student</label>
+          <div class="relative"><i data-lucide="user-search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+          <input id="rStudent" list="studentList" oninput="onReportStudentInput()" placeholder="Start typing a name…" class="w-full h-12 pl-11 pr-4 rounded-2xl bg-card border border-line text-sm font-semibold"></div>
+          <datalist id="studentList"></datalist>
+          <p class="text-[11px] text-slate-400 mt-1.5 font-medium">New name? It will be added to the register automatically.</p>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Class</label>
+          <input id="rClass" placeholder="e.g. 4B, Year 9 Maple" class="w-full h-12 px-4 rounded-2xl bg-card border border-line text-sm font-semibold"></div>
+          <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Department</label>
+          <select id="rDepartment" class="w-full h-12 px-4 rounded-2xl bg-card border border-line text-sm font-semibold text-slate-700">
+            <option value="">Select department…</option>
+            <option value="Primary">Primary</option>
+            <option value="Secondary">Secondary</option>
+            <option value="Extra">Extra</option>
+            <option value="Camps">Camps</option>
+            <option value="Weekend Club">Weekend Club</option>
+          </select></div>
         </div>
       </div>
-      <div>
-        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Risk level</label>
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2" id="rRiskGrid">
-          <button type="button" data-risk="Low" class="rrisk h-12 rounded-2xl border-2 border-line bg-card text-sm font-bold text-low">Low</button>
-          <button type="button" data-risk="Medium" class="rrisk h-12 rounded-2xl border-2 border-line bg-card text-sm font-bold text-med">Medium</button>
-          <button type="button" data-risk="High" class="rrisk h-12 rounded-2xl border-2 border-line bg-card text-sm font-bold text-high">High</button>
-          <button type="button" data-risk="Critical" class="rrisk h-12 rounded-2xl border-2 border-line bg-card text-sm font-bold text-crit">Critical</button>
+      <div class="space-y-4">
+        <div class="flex items-center gap-2 pb-1.5 border-b border-line"><i data-lucide="shield-alert" class="w-3.5 h-3.5 text-brand"></i><h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider">The concern</h4></div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Category of concern</label>
+          <div id="rCategoryGrid" class="grid grid-cols-2 sm:grid-cols-3 gap-2"></div>
+          <input type="hidden" id="rCategory">
+          <div id="rSubWrap" class="hidden mt-3">
+            <select id="rSubcategory" class="w-full h-12 px-4 rounded-2xl bg-card border border-line text-sm font-semibold text-slate-700"></select>
+          </div>
         </div>
-        <input type="hidden" id="rRisk" value="Medium">
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Risk level</label>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2" id="rRiskGrid">
+            <button type="button" data-risk="Low" class="rrisk h-12 rounded-2xl border-2 border-line bg-card text-sm font-bold text-low">Low</button>
+            <button type="button" data-risk="Medium" class="rrisk h-12 rounded-2xl border-2 border-line bg-card text-sm font-bold text-med">Medium</button>
+            <button type="button" data-risk="High" class="rrisk h-12 rounded-2xl border-2 border-line bg-card text-sm font-bold text-high">High</button>
+            <button type="button" data-risk="Critical" class="rrisk h-12 rounded-2xl border-2 border-line bg-card text-sm font-bold text-crit">Critical</button>
+          </div>
+          <input type="hidden" id="rRisk" value="Medium">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">What happened?</label>
+          <textarea id="rDesc" rows="4" placeholder="Record the facts: what was seen or heard, the words used, time and place. Avoid opinion or interpretation." class="w-full px-4 py-3 rounded-2xl bg-card border border-line text-sm font-medium resize-none"></textarea>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Where</label>
+          <input id="rLocation" placeholder="e.g. Science block corridor" class="w-full h-12 px-4 rounded-2xl bg-card border border-line text-sm font-medium"></div>
+          <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Reported by</label>
+          <input id="rReporter" class="w-full h-12 px-4 rounded-2xl bg-card border border-line text-sm font-medium"></div>
+        </div>
       </div>
-      <div>
-        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">What happened?</label>
-        <textarea id="rDesc" rows="4" placeholder="Record the facts: what was seen or heard, the words used, time and place. Avoid opinion or interpretation." class="w-full px-4 py-3 rounded-2xl bg-card border border-line text-sm font-medium resize-none"></textarea>
-      </div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Where</label>
-        <input id="rLocation" placeholder="e.g. Science block corridor" class="w-full h-12 px-4 rounded-2xl bg-card border border-line text-sm font-medium"></div>
-        <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Reported by</label>
-        <input id="rReporter" class="w-full h-12 px-4 rounded-2xl bg-card border border-line text-sm font-medium"></div>
-      </div>
-      <div id="rStrategiesSection" class="hidden">
-        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Teaching/Learning strategies implemented</label>
-        <p class="text-[11px] text-slate-400 mb-3 font-medium">Tick all strategies you have consistently used before making this referral.</p>
-        <div id="rStrategiesGrid" class="space-y-4"></div>
-      </div>
-      <div id="rStrategyImpactSection" class="hidden grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Which strategies had the greatest positive impact?</label>
-        <textarea id="rStrategyImpactPositive" rows="2" class="w-full px-4 py-3 rounded-2xl bg-card border border-line text-sm font-medium resize-none"></textarea></div>
-        <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Which strategies had little or no impact?</label>
-        <textarea id="rStrategyImpactNone" rows="2" class="w-full px-4 py-3 rounded-2xl bg-card border border-line text-sm font-medium resize-none"></textarea></div>
-      </div>
-      <div id="rSendcoReasonSection" class="hidden">
-        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Why are you requesting a SENDCo observation or support at this stage?</label>
-        <textarea id="rSendcoReason" rows="3" class="w-full px-4 py-3 rounded-2xl bg-card border border-line text-sm font-medium resize-none"></textarea>
-      </div>
-      <div>
-        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">How long have these strategies been consistently implemented?</label>
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2" id="rDurationGrid"></div>
-        <input type="hidden" id="rStrategyDuration" value="">
+      <div id="rTeachingStrategiesWrap" class="hidden space-y-4">
+        <div class="flex items-center gap-2 pb-1.5 border-b border-line"><i data-lucide="graduation-cap" class="w-3.5 h-3.5 text-brand"></i><h4 class="text-xs font-bold text-slate-500 uppercase tracking-wider">Teaching strategies</h4></div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Teaching/Learning strategies implemented</label>
+          <p class="text-[11px] text-slate-400 mb-3 font-medium">Tick all strategies you have consistently used before making this referral.</p>
+          <div id="rStrategiesGrid" class="space-y-4"></div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Which strategies had the greatest positive impact?</label>
+          <textarea id="rStrategyImpactPositive" rows="2" class="w-full px-4 py-3 rounded-2xl bg-card border border-line text-sm font-medium resize-none"></textarea></div>
+          <div><label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Which strategies had little or no impact?</label>
+          <textarea id="rStrategyImpactNone" rows="2" class="w-full px-4 py-3 rounded-2xl bg-card border border-line text-sm font-medium resize-none"></textarea></div>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Why are you requesting a SENDCo observation or support at this stage?</label>
+          <textarea id="rSendcoReason" rows="3" class="w-full px-4 py-3 rounded-2xl bg-card border border-line text-sm font-medium resize-none"></textarea>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">How long have these strategies been consistently implemented?</label>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2" id="rDurationGrid"></div>
+          <input type="hidden" id="rStrategyDuration" value="">
+        </div>
       </div>
       <details class="bg-card rounded-2xl border border-line overflow-hidden group">
         <summary class="px-4 py-3.5 cursor-pointer flex items-center justify-between text-sm font-bold text-slate-700 hover:bg-dim">
@@ -807,54 +818,62 @@ tailwind.config = {
             <button onclick="openCaseMeetingsModal()" class="w-full h-11 px-4 rounded-2xl border-2 border-dashed border-line bg-card hover:border-brand/40 hover:bg-dim/40 text-sm font-bold text-slate-600 flex items-center justify-center gap-2 transition-colors"><i data-lucide="notebook-pen" class="w-4 h-4 text-brand"></i>Open meeting minutes</button>
           </div>
         </div>
-        <div class="lg:col-span-2 p-5 sm:p-7 bg-card border-t lg:border-t-0 lg:border-l border-line space-y-5">
-          <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Status</h4>
-          <select id="caseStatus" onchange="changeStatus()" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-bold">
-            <option>New</option><option>In progress</option><option>Monitoring</option><option>Referred</option><option>Resolved</option></select></div>
-          <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Risk level</h4>
-          <select id="caseRisk" onchange="changeRisk()" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-bold">
-            <option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select></div>
-          <div id="caseCategoryWrap" class="hidden">
-            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Category of concern</h4>
-            <select id="caseCategorySelect" onchange="changeCategory()" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-bold mb-2"></select>
-            <select id="caseSubcategorySelect" onchange="changeSubcategory()" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-semibold"></select>
+        <div class="lg:col-span-2 p-5 sm:p-7 bg-card border-t lg:border-t-0 lg:border-l border-line">
+          <div class="flex bg-dim p-1 rounded-full text-xs font-bold mb-5">
+            <button id="caseTabBtnStatus" onclick="switchCaseTab('status')" class="flex-1 px-3 py-1.5 rounded-full nav-active text-brandDark">Status &amp; people</button>
+            <button id="caseTabBtnDetails" onclick="switchCaseTab('details')" class="flex-1 px-3 py-1.5 rounded-full text-slate-500">Details &amp; records</button>
           </div>
-          <div id="caseRestrictWrap" class="hidden">
-            <div class="flex items-center justify-between mb-2"><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Restrict visibility</h4>
-            <button onclick="openCaseRestrictModal()" class="text-xs font-bold text-brand hover:text-brandDark flex items-center gap-1"><i data-lucide="lock" class="w-3.5 h-3.5"></i>Manage</button></div>
-            <p id="caseRestrictStatus" class="text-[11px] text-slate-400 font-medium"></p>
-          </div>
-          <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Assigned to</h4>
-          <div id="caseAssignee" class="flex flex-wrap gap-1.5"></div></div>
-          <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Multi-agency referrals</h4>
-            <div class="space-y-2" id="caseAgencies"></div>
-          </div>
-          <div>
-            <div class="flex items-center justify-between mb-3"><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Linked cases</h4>
-            <button onclick="openLinkCasePicker()" class="text-xs font-bold text-brand hover:text-brandDark flex items-center gap-1"><i data-lucide="link" class="w-3.5 h-3.5"></i>Link</button></div>
-            <div id="caseLinked" class="space-y-2"></div>
-          </div>
-          <div id="caseSendWrap" class="hidden">
-            <div class="flex items-center justify-between mb-3"><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">SEND status</h4>
-            <span id="caseSendCurrent" class="text-[10px] font-bold px-2 py-0.5 rounded-md"></span></div>
-            <div id="caseSendGrid" class="space-y-1.5"></div>
-            <div class="mt-3">
-              <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Primary area of need</label>
-              <select id="caseSendNeedArea" onchange="setCaseSendNeedArea(this.value)" class="w-full h-10 px-3 rounded-xl bg-dim border border-transparent text-sm font-semibold text-slate-700 disabled:opacity-50">
-                <option value="">Not specified</option>
-              </select>
-              <p id="caseSendNeedAreaHint" class="text-[11px] text-slate-400 font-medium mt-1 hidden">Set a SEND status above first.</p>
+          <div id="caseTabStatus" class="space-y-5">
+            <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Status</h4>
+            <select id="caseStatus" onchange="changeStatus()" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-bold">
+              <option>New</option><option>In progress</option><option>Monitoring</option><option>Referred</option><option>Resolved</option></select></div>
+            <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Risk level</h4>
+            <select id="caseRisk" onchange="changeRisk()" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-bold">
+              <option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select></div>
+            <div id="caseCategoryWrap" class="hidden">
+              <h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Category of concern</h4>
+              <select id="caseCategorySelect" onchange="changeCategory()" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-bold mb-2"></select>
+              <select id="caseSubcategorySelect" onchange="changeSubcategory()" class="w-full h-11 px-3 rounded-xl bg-dim border border-transparent text-sm font-semibold"></select>
             </div>
-            <p class="text-[11px] text-slate-400 font-medium mt-2">Logging a status here feeds the whole-school SEND report automatically.</p>
+            <div id="caseRestrictWrap" class="hidden">
+              <div class="flex items-center justify-between mb-2"><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Restrict visibility</h4>
+              <button onclick="openCaseRestrictModal()" class="text-xs font-bold text-brand hover:text-brandDark flex items-center gap-1"><i data-lucide="lock" class="w-3.5 h-3.5"></i>Manage</button></div>
+              <p id="caseRestrictStatus" class="text-[11px] text-slate-400 font-medium"></p>
+            </div>
+            <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Assigned to</h4>
+            <div id="caseAssignee" class="flex flex-wrap gap-1.5"></div></div>
           </div>
-          <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Teaching/Learning strategies implemented</h4>
-            <div id="caseStrategies" class="space-y-1.5 text-[11px] text-slate-600"></div>
+          <div id="caseTabDetails" class="hidden space-y-5">
+            <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Multi-agency referrals</h4>
+              <div class="space-y-2" id="caseAgencies"></div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-3"><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">Linked cases</h4>
+              <button onclick="openLinkCasePicker()" class="text-xs font-bold text-brand hover:text-brandDark flex items-center gap-1"><i data-lucide="link" class="w-3.5 h-3.5"></i>Link</button></div>
+              <div id="caseLinked" class="space-y-2"></div>
+            </div>
+            <div id="caseSendWrap" class="hidden">
+              <div class="flex items-center justify-between mb-3"><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest">SEND status</h4>
+              <span id="caseSendCurrent" class="text-[10px] font-bold px-2 py-0.5 rounded-md"></span></div>
+              <div id="caseSendGrid" class="space-y-1.5"></div>
+              <div class="mt-3">
+                <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">Primary area of need</label>
+                <select id="caseSendNeedArea" onchange="setCaseSendNeedArea(this.value)" class="w-full h-10 px-3 rounded-xl bg-dim border border-transparent text-sm font-semibold text-slate-700 disabled:opacity-50">
+                  <option value="">Not specified</option>
+                </select>
+                <p id="caseSendNeedAreaHint" class="text-[11px] text-slate-400 font-medium mt-1 hidden">Set a SEND status above first.</p>
+              </div>
+              <p class="text-[11px] text-slate-400 font-medium mt-2">Logging a status here feeds the whole-school SEND report automatically.</p>
+            </div>
+            <div><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Teaching/Learning strategies implemented</h4>
+              <div id="caseStrategies" class="space-y-1.5 text-[11px] text-slate-600"></div>
+            </div>
+            <div class="pt-2"><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Case details</h4>
+              <div id="caseMeta" class="space-y-2 text-xs"></div>
+            </div>
+            <button onclick="printCase()" class="w-full h-10 rounded-full border-2 border-line text-xs font-bold text-slate-600 hover:border-brand/40 hover:text-brand flex items-center justify-center gap-1.5"><i data-lucide="printer" class="w-3.5 h-3.5"></i>Print case summary</button>
+            <button onclick="deleteCase()" class="w-full h-10 rounded-full text-xs font-bold text-crit hover:bg-critSoft flex items-center justify-center gap-1.5"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i>Delete concern</button>
           </div>
-          <div class="pt-2"><h4 class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Case details</h4>
-            <div id="caseMeta" class="space-y-2 text-xs"></div>
-          </div>
-          <button onclick="printCase()" class="w-full h-10 rounded-full border-2 border-line text-xs font-bold text-slate-600 hover:border-brand/40 hover:text-brand flex items-center justify-center gap-1.5"><i data-lucide="printer" class="w-3.5 h-3.5"></i>Print case summary</button>
-          <button onclick="deleteCase()" class="w-full h-10 rounded-full text-xs font-bold text-crit hover:bg-critSoft flex items-center justify-center gap-1.5"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i>Delete concern</button>
         </div>
       </div>
     </div>
@@ -2329,9 +2348,7 @@ function openReport(prefillName){
   $('rStrategyDuration').value='';
   document.querySelectorAll('input[name="rStrategy"]').forEach(cb=> cb.checked=false);
   $('rSubWrap').classList.add('hidden');
-  $('rStrategiesSection').classList.add('hidden');
-  $('rStrategyImpactSection').classList.add('hidden');
-  $('rSendcoReasonSection').classList.add('hidden');
+  $('rTeachingStrategiesWrap').classList.add('hidden');
   renderStrategyCheckboxes();
   renderDurationButtons();
   $('rCategoryGrid').innerHTML = Object.entries(CATEGORIES).map(([name,m])=>`
@@ -2368,9 +2385,7 @@ function pickCategory(name){
   $('rSubWrap').classList.remove('hidden');
   $('rSubcategory').innerHTML='<option value="">Select nature (optional)…</option>'+subs.map(s=>`<option>${s}</option>`).join('');
   const showStrategies = name==='Communication and Language' || name==='Cognition and Learning';
-  $('rStrategiesSection').classList.toggle('hidden', !showStrategies);
-  $('rStrategyImpactSection').classList.toggle('hidden', !showStrategies);
-  $('rSendcoReasonSection').classList.toggle('hidden', !showStrategies);
+  $('rTeachingStrategiesWrap').classList.toggle('hidden', !showStrategies);
 }
 function pickRisk(r){ $('rRisk').value=r;
   document.querySelectorAll('.rrisk').forEach(b=>{ const on=b.dataset.risk===r; const k=RISK[safeRisk(b.dataset.risk)];
@@ -2503,9 +2518,16 @@ function renderCaseHeader(c){
     </div>`;
   icons();
 }
+function switchCaseTab(tab){
+  $('caseTabStatus').classList.toggle('hidden', tab!=='status');
+  $('caseTabDetails').classList.toggle('hidden', tab!=='details');
+  $('caseTabBtnStatus').className = `flex-1 px-3 py-1.5 rounded-full ${tab==='status'?'nav-active text-brandDark':'text-slate-500'}`;
+  $('caseTabBtnDetails').className = `flex-1 px-3 py-1.5 rounded-full ${tab==='details'?'nav-active text-brandDark':'text-slate-500'}`;
+}
 function openCase(id){
   activeCaseId=id; const c=DB.cases.find(x=>x.id===id); if(!c) return;
   const s=studentById(c.studentId);
+  switchCaseTab('status');
   renderCaseHeader(c);
   $('caseDesc').textContent=c.description;
   // body map
