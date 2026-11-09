@@ -2954,7 +2954,7 @@ function renderCaseMeetings(c){
         <span class="text-sm font-bold text-ink">${esc(m.title||'Meeting')}</span>
         <button onclick="deleteCaseMeeting('${m.id}')" title="Delete" class="w-7 h-7 shrink-0 rounded-full hover:bg-critSoft text-slate-400 hover:text-crit grid place-items-center"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
       </div>
-      <div class="text-[11px] font-semibold text-slate-400 mb-1.5">${fmtDate(m.time)} ${fmtTime(m.time)} · ${esc(m.author)}</div>
+      <div class="text-[11px] font-semibold text-slate-400 mb-1.5">${ME.role==='Lead DSL' ? `<label class="inline-flex items-center gap-2">Date and time<input type="datetime-local" value="${toDatetimeLocalValue(m.time)}" onchange="changeMeetingDate('${m.id}', this.value)" class="h-8 px-2 rounded-lg border border-line bg-dim text-xs font-semibold text-ink"></label>` : `${fmtDate(m.time)} ${fmtTime(m.time)}`} · ${esc(m.author)}</div>
       <p class="text-xs text-slate-600 font-medium whitespace-pre-wrap">${esc(m.text)}</p>
       ${(m.attachments&&m.attachments.length) ? `<div class="flex flex-wrap gap-1.5 mt-2">${m.attachments.map(a=>`
         <a href="${esc(a.url)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-1 rounded-lg bg-dim text-slate-600 hover:bg-line"><i data-lucide="${attachmentIcon(a.mimeType)}" class="w-3.5 h-3.5"></i>${esc(a.name)}<span class="text-slate-400 font-medium">${fmtBytes(a.size)}</span></a>`).join('')}</div>` : ''}
@@ -2990,6 +2990,21 @@ async function addCaseMeeting(){
   if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
   persist(); renderCaseMeetings(c); toast('Meeting minutes logged');
   btn.disabled=false; btn.innerHTML=orig; icons();
+}
+function changeMeetingDate(id, value){
+  if(ME.role!=='Lead DSL') return;
+  const c = DB.cases.find(x=>x.id===activeCaseId); if(!c) return;
+  const meeting = (c.meetings||[]).find(m=>m.id===id); if(!meeting) return;
+  const date = new Date(value);
+  if(!value || isNaN(date.getTime())){
+    toast('Enter a valid date and time','warning'); renderCaseMeetings(c); return;
+  }
+  const oldTime = meeting.time;
+  if(oldTime===date.toISOString()) return;
+  meeting.time = date.toISOString();
+  logAudit('Meeting minutes date and time changed', `${c.studentName}: ${fmtDate(oldTime)} ${fmtTime(oldTime)} → ${fmtDate(meeting.time)} ${fmtTime(meeting.time)}`);
+  if(SOURCE==='live'&&SCRIPT_URL) postLive({action:'syncCase',payload:c});
+  persist(); renderCaseMeetings(c); toast('Meeting date and time updated');
 }
 function deleteCaseMeeting(id){
   const c = DB.cases.find(x=>x.id===activeCaseId); if(!c) return;
