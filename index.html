@@ -89,6 +89,21 @@ tailwind.config = {
   .otp-box::-webkit-outer-spin-button,.otp-box::-webkit-inner-spin-button{-webkit-appearance:none;}
   .otp-box{ font-variant-numeric:tabular-nums; }
   #authOverlay{ transition:opacity .4s; }
+  .school-logo{ display:block; object-fit:contain; height:auto; }
+  .auth-logo-frame{
+    width:224px; max-width:100%; margin:0 auto 24px; padding:20px 24px;
+    border:1px solid #fff; border-radius:32px;
+    background:linear-gradient(145deg,#fff 35%,#e7f5f1);
+    box-shadow:0 12px 32px -16px rgba(10,91,83,.25),inset 0 0 0 1px rgba(13,122,111,.06);
+  }
+  .auth-logo-frame .school-logo{ width:176px; max-width:100%; margin:auto; }
+  .sidebar-brand{ min-height:132px; flex-shrink:0; background:linear-gradient(180deg,#fff,#f4faf8); }
+  .sidebar-brand .school-logo{ width:164px; max-width:calc(100% - 44px); }
+  #authOverlay{ overflow-y:auto; }
+  @media (max-height:700px){
+    #authOverlay{ align-items:flex-start; }
+    .auth-logo-frame{ width:184px; padding:12px 20px; margin-bottom:16px; border-radius:24px; }
+  }
 </style>
 </head>
 <body class="min-h-screen flex flex-col md:flex-row">
@@ -101,7 +116,9 @@ tailwind.config = {
   <div class="w-full max-w-sm">
     <!-- Logo & Header -->
     <div class="text-center mb-10">
-      <img src="https://admin.icanskill.com/wp-content/uploads/2024/06/school.svg" alt="I CAN School" class="h-16 mx-auto mb-6 object-contain">
+      <div class="auth-logo-frame">
+        <img src="./icons/school-logo.svg" alt="I CAN School" width="200" height="120" class="school-logo">
+      </div>
       <h1 class="font-display font-extrabold text-3xl text-ink mb-2">Safeguarding Platform</h1>
       <p class="text-sm text-slate-500 font-medium">Secure access for school staff</p>
     </div>
@@ -166,8 +183,8 @@ tailwind.config = {
      by hand forever). -->
 <div id="mobileNavScrim" onclick="closeMobileNav()" class="md:hidden fixed inset-0 z-[135] hidden bg-ink/50 backdrop-blur-sm opacity-0 transition-opacity"></div>
 <aside id="sidebarNav" class="fixed inset-y-0 left-0 z-[140] w-72 max-w-[85vw] -translate-x-full transition-transform duration-300 ease-out flex flex-col border-r-0 shadow-lift md:shadow-none md:sticky md:top-0 md:bottom-auto md:left-auto md:translate-x-0 md:z-auto md:w-64 md:max-w-none md:shrink-0 md:h-screen md:border-r bg-card border-line">
-  <div class="px-5 h-20 flex items-center justify-between md:justify-center border-b border-line">
-    <img src="https://admin.icanskill.com/wp-content/uploads/2024/06/school.svg" alt="I CAN School Safeguarding" class="h-10 w-full max-w-[210px] object-contain">
+  <div class="sidebar-brand px-5 py-4 flex items-center justify-between md:justify-center border-b border-line">
+    <img src="./icons/school-logo.svg" alt="I CAN School Safeguarding" width="200" height="120" class="school-logo">
     <button onclick="closeMobileNav()" class="md:hidden w-9 h-9 shrink-0 grid place-items-center rounded-full hover:bg-dim text-slate-500" aria-label="Close menu"><i data-lucide="x" class="w-5 h-5"></i></button>
   </div>
   <nav class="flex-1 p-3 space-y-1 overflow-y-auto scroll-thin">
