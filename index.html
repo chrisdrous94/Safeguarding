@@ -101,7 +101,7 @@ tailwind.config = {
   <div class="w-full max-w-sm">
     <!-- Logo & Header -->
     <div class="text-center mb-10">
-      <img src="./icons/school-logo.png" alt="I CAN School" class="h-16 mx-auto mb-6 object-contain">
+      <img src="https://admin.icanskill.com/wp-content/uploads/2024/06/school.svg" alt="I CAN School" class="h-16 mx-auto mb-6 object-contain">
       <h1 class="font-display font-extrabold text-3xl text-ink mb-2">Safeguarding Platform</h1>
       <p class="text-sm text-slate-500 font-medium">Secure access for school staff</p>
     </div>
@@ -167,7 +167,7 @@ tailwind.config = {
 <div id="mobileNavScrim" onclick="closeMobileNav()" class="md:hidden fixed inset-0 z-[135] hidden bg-ink/50 backdrop-blur-sm opacity-0 transition-opacity"></div>
 <aside id="sidebarNav" class="fixed inset-y-0 left-0 z-[140] w-72 max-w-[85vw] -translate-x-full transition-transform duration-300 ease-out flex flex-col border-r-0 shadow-lift md:shadow-none md:sticky md:top-0 md:bottom-auto md:left-auto md:translate-x-0 md:z-auto md:w-64 md:max-w-none md:shrink-0 md:h-screen md:border-r bg-card border-line">
   <div class="px-5 h-20 flex items-center justify-between md:justify-center border-b border-line">
-    <img src="./icons/school-logo.png" alt="I CAN School Safeguarding" class="h-10 w-full max-w-[210px] object-contain">
+    <img src="https://admin.icanskill.com/wp-content/uploads/2024/06/school.svg" alt="I CAN School Safeguarding" class="h-10 w-full max-w-[210px] object-contain">
     <button onclick="closeMobileNav()" class="md:hidden w-9 h-9 shrink-0 grid place-items-center rounded-full hover:bg-dim text-slate-500" aria-label="Close menu"><i data-lucide="x" class="w-5 h-5"></i></button>
   </div>
   <nav class="flex-1 p-3 space-y-1 overflow-y-auto scroll-thin">
@@ -199,7 +199,7 @@ tailwind.config = {
   <div class="h-20 px-4 sm:px-6 flex items-center justify-between gap-4">
     <div class="flex items-center gap-2 sm:gap-3 min-w-0">
       <button onclick="openMobileNav()" class="md:hidden w-9 h-9 shrink-0 grid place-items-center rounded-full hover:bg-dim text-slate-600" aria-label="Open menu"><i data-lucide="menu" class="w-5 h-5"></i></button>
-      <img src="./icons/school-logo.png" alt="I CAN School" class="hidden sm:block md:hidden h-9 w-auto object-contain shrink-0">
+      <img src="https://admin.icanskill.com/wp-content/uploads/2024/06/school.svg" alt="I CAN School" class="hidden sm:block md:hidden h-9 w-auto object-contain shrink-0">
       <div class="min-w-0">
         <h1 id="viewTitle" class="font-display font-extrabold text-base sm:text-xl text-ink truncate">Dashboard</h1>
         <p id="viewSub" class="text-[11px] sm:text-xs text-slate-500 font-medium truncate">Campus safeguarding overview</p>
@@ -419,7 +419,7 @@ tailwind.config = {
 <section data-view="teacher-home" class="hidden fade">
   <div class="max-w-2xl mx-auto space-y-5">
     <div class="bg-brand rounded-4xl p-8 text-white text-center">
-      <img src="./icons/school-logo.png" alt="I CAN School" class="h-10 mx-auto mb-5 object-contain">
+      <img src="https://admin.icanskill.com/wp-content/uploads/2024/06/school.svg" alt="I CAN School" class="h-10 mx-auto mb-5 object-contain">
       <h2 class="font-display font-extrabold text-2xl mb-2">Report a Safeguarding Concern</h2>
       <p class="text-white/75 text-sm font-medium mb-6 max-w-sm mx-auto">Your report goes directly and confidentially to the Designated Safeguarding Lead. Do not delay — report the same day.</p>
       <button onclick="openReport()" class="h-14 px-8 rounded-full bg-white text-brand text-base font-extrabold shadow-lift hover:bg-dim transition-colors inline-flex items-center gap-2">
@@ -1328,7 +1328,7 @@ const ALLOWED_ATTACHMENT_MIME = ['application/pdf', 'application/msword', 'appli
 
 // Shared header for every print/PDF export (printChronology, printCaseMeetings,
 // printCase, exportSendReportPDF) — one place to change the school logo.
-const PRINT_LOGO_HTML = '<img src="' + new URL('./icons/school-logo.png', document.baseURI).href + '" alt="School logo" style="max-height:50px;margin-bottom:12px;display:block">';
+const PRINT_LOGO_HTML = '<img src="' + new URL('https://admin.icanskill.com/wp-content/uploads/2024/06/school.svg', document.baseURI).href + '" alt="School logo" style="max-height:50px;margin-bottom:12px;display:block">';
 
 const STRATEGY_GROUPS = [
   { title:'Classroom Environment', items:[

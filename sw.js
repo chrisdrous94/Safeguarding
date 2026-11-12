@@ -12,7 +12,7 @@
 // network-first HTML means the next load picks up the new version with no
 // "update available" prompt needed.
 
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 const CACHE_NAME = 'safeguarding-shell-' + CACHE_VERSION;
 
 const SHELL_URLS = [
@@ -21,7 +21,7 @@ const SHELL_URLS = [
   './manifest.json',
   './vendor/lucide-0.462.0.js',
   './vendor/chart-4.4.7.umd.min.js',
-  './icons/school-logo.png',
+  './icons/school-logo.svg',
   './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
