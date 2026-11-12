@@ -101,7 +101,7 @@ tailwind.config = {
   <div class="w-full max-w-sm">
     <!-- Logo & Header -->
     <div class="text-center mb-10">
-      <img src="https://icanskill.com/_ipx/_/img/logo/ican.svg" alt="I CAN School" class="h-16 mx-auto mb-6 object-contain">
+      <img src="./icons/school-logo.png" alt="I CAN School" class="h-16 mx-auto mb-6 object-contain">
       <h1 class="font-display font-extrabold text-3xl text-ink mb-2">Safeguarding Platform</h1>
       <p class="text-sm text-slate-500 font-medium">Secure access for school staff</p>
     </div>
@@ -167,7 +167,7 @@ tailwind.config = {
 <div id="mobileNavScrim" onclick="closeMobileNav()" class="md:hidden fixed inset-0 z-[135] hidden bg-ink/50 backdrop-blur-sm opacity-0 transition-opacity"></div>
 <aside id="sidebarNav" class="fixed inset-y-0 left-0 z-[140] w-72 max-w-[85vw] -translate-x-full transition-transform duration-300 ease-out flex flex-col border-r-0 shadow-lift md:shadow-none md:sticky md:top-0 md:bottom-auto md:left-auto md:translate-x-0 md:z-auto md:w-64 md:max-w-none md:shrink-0 md:h-screen md:border-r bg-card border-line">
   <div class="px-5 h-20 flex items-center justify-between md:justify-center border-b border-line">
-    <img src="https://icanskill.com/_ipx/_/img/logo/ican.svg" alt="I CAN School Safeguarding" class="h-10 w-full max-w-[210px] object-contain">
+    <img src="./icons/school-logo.png" alt="I CAN School Safeguarding" class="h-10 w-full max-w-[210px] object-contain">
     <button onclick="closeMobileNav()" class="md:hidden w-9 h-9 shrink-0 grid place-items-center rounded-full hover:bg-dim text-slate-500" aria-label="Close menu"><i data-lucide="x" class="w-5 h-5"></i></button>
   </div>
   <nav class="flex-1 p-3 space-y-1 overflow-y-auto scroll-thin">
@@ -199,7 +199,7 @@ tailwind.config = {
   <div class="h-20 px-4 sm:px-6 flex items-center justify-between gap-4">
     <div class="flex items-center gap-2 sm:gap-3 min-w-0">
       <button onclick="openMobileNav()" class="md:hidden w-9 h-9 shrink-0 grid place-items-center rounded-full hover:bg-dim text-slate-600" aria-label="Open menu"><i data-lucide="menu" class="w-5 h-5"></i></button>
-      <img src="https://icanskill.com/_ipx/_/img/logo/ican.svg" alt="I CAN School" class="hidden sm:block md:hidden h-9 w-auto object-contain shrink-0">
+      <img src="./icons/school-logo.png" alt="I CAN School" class="hidden sm:block md:hidden h-9 w-auto object-contain shrink-0">
       <div class="min-w-0">
         <h1 id="viewTitle" class="font-display font-extrabold text-base sm:text-xl text-ink truncate">Dashboard</h1>
         <p id="viewSub" class="text-[11px] sm:text-xs text-slate-500 font-medium truncate">Campus safeguarding overview</p>
@@ -419,7 +419,7 @@ tailwind.config = {
 <section data-view="teacher-home" class="hidden fade">
   <div class="max-w-2xl mx-auto space-y-5">
     <div class="bg-brand rounded-4xl p-8 text-white text-center">
-      <img src="https://icanskill.com/_ipx/_/img/logo/ican.svg" alt="I CAN School" class="h-10 mx-auto mb-5 object-contain brightness-0 invert">
+      <img src="./icons/school-logo.png" alt="I CAN School" class="h-10 mx-auto mb-5 object-contain">
       <h2 class="font-display font-extrabold text-2xl mb-2">Report a Safeguarding Concern</h2>
       <p class="text-white/75 text-sm font-medium mb-6 max-w-sm mx-auto">Your report goes directly and confidentially to the Designated Safeguarding Lead. Do not delay — report the same day.</p>
       <button onclick="openReport()" class="h-14 px-8 rounded-full bg-white text-brand text-base font-extrabold shadow-lift hover:bg-dim transition-colors inline-flex items-center gap-2">
@@ -1312,7 +1312,10 @@ const AGENCIES = {
 // VALID_ROLES list in apps-script-db.gs. Anyone holding the assigned role can
 // see/action the case (see visibleCases()/renderStudents()'s ME.role checks)
 // and everyone active in that role is emailed (see notifyAssignee server-side).
-const ASSIGNABLE_ROLES = ['Teacher', 'SENDCO', 'Pastoral Lead', 'Deputy DSL', 'Head of Primary', 'Head of Secondary', 'Head of Extra', 'Lead DSL', 'Principal'];
+// Accept the former role name in saved accounts and case assignments.
+function normalizeRole(role){ return role === 'Pastoral Lead' ? 'School Psychologist' : role; }
+function normalizeAssignee(value){ return (Array.isArray(value) ? value : String(value||'').split(',')).map(function(role){ return normalizeRole(String(role).trim()); }).filter(Boolean).join(', '); }
+const ASSIGNABLE_ROLES = ['Teacher', 'SENDCO', 'School Psychologist', 'Deputy DSL', 'Head of Primary', 'Head of Secondary', 'Head of Extra', 'Lead DSL', 'Principal'];
 
 // Meeting-minute attachments (see addCaseMeeting()) — kept in sync with
 // apps-script-db.gs's ALLOWED_ATTACHMENT_MIME/ATTACHMENT_MAX_BYTES. Uploaded
@@ -1325,7 +1328,7 @@ const ALLOWED_ATTACHMENT_MIME = ['application/pdf', 'application/msword', 'appli
 
 // Shared header for every print/PDF export (printChronology, printCaseMeetings,
 // printCase, exportSendReportPDF) — one place to change the school logo.
-const PRINT_LOGO_HTML = '<img src="https://admin.icanskill.com/wp-content/uploads/2024/06/school.svg" alt="School logo" style="max-height:50px;margin-bottom:12px;display:block">';
+const PRINT_LOGO_HTML = '<img src="' + new URL('./icons/school-logo.png', document.baseURI).href + '" alt="School logo" style="max-height:50px;margin-bottom:12px;display:block">';
 
 const STRATEGY_GROUPS = [
   { title:'Classroom Environment', items:[
@@ -1394,7 +1397,7 @@ let APP_USERS = [];
 let PUBLIC_REPORT_MODE = false;
 
 // ---------- AUTH helpers (must be before go() function) ----------
-const IS_TEACHER = ()=> ME.role==='Teacher' || ME.role==='Pastoral Lead' || ME.role==='SENDCO';
+const IS_TEACHER = ()=> ME.role==='Teacher' || ME.role==='School Psychologist' || ME.role==='SENDCO';
 const IS_HEAD_PRIMARY = ()=> ME.role==='Head of Primary';
 const IS_HEAD_SECONDARY = ()=> ME.role==='Head of Secondary';
 const IS_PHASE_HEAD = ()=> IS_HEAD_PRIMARY() || IS_HEAD_SECONDARY();
@@ -1558,12 +1561,12 @@ document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState=
 window.addEventListener('pagehide', ()=>{ if(_persistScheduled) persistNow(); });
 function loadPersisted(){
   const raw=LS.get('ics_db');
-  if(raw){ try{ DB=JSON.parse(raw); return true; }catch(e){} }
+  if(raw){ try{ DB=JSON.parse(raw); (DB.cases||[]).forEach(c=>{ c.assignee=normalizeAssignee(c.assignee); }); return true; }catch(e){} }
   return false;
 }
 function loadPrefs(){
   ME.name = LS.get('ics_name') || ME.name;
-  ME.role = LS.get('ics_role') || ME.role;
+  ME.role = normalizeRole(LS.get('ics_role') || ME.role);
   SOURCE  = LS.get('ics_source') || 'live';
   SCRIPT_URL = LS.get('ics_url') || SCRIPT_URL;
 }
@@ -1807,7 +1810,7 @@ let FAMILIES = []; // { familyId, familyName, studentIds[], notes } — see load
 // role===/includes() comparison in this file still uses the raw key — ONLY
 // display text should ever go through roleLabel() below.
 let ROLE_LABELS = {};
-function roleLabel(key){ return ROLE_LABELS[key] || key; }
+function roleLabel(key){ key = normalizeRole(key); return normalizeRole(ROLE_LABELS[key] || key); }
 // Shared by every role <select> (uRole, setRole) — value stays the raw
 // permission key, only the visible text follows the custom label.
 function roleOptionsHtml(){ return ASSIGNABLE_ROLES.map(r=>`<option value="${esc(r)}">${esc(roleLabel(r))}</option>`).join(''); }
@@ -1840,7 +1843,7 @@ async function syncData(){
         description: p.description || r.description || '',
         location: p.location || r.location || '',
         reporter: p.reporter || r.reporterName || '',
-        assignee: p.assignee || r.assignee || '',
+        assignee: normalizeAssignee(p.assignee || r.assignee),
         department: p.department || r.department || '',
         studentClass: p.studentClass || r.studentClass || '',
         strategyImpactPositive: p.strategyImpactPositive || '',
@@ -4549,7 +4552,7 @@ const SEND_CASE_ROLES = ['Lead DSL', 'Deputy DSL', 'Principal', 'SENDCO'];
 // existing user saved under it must keep working.
 const ADMIN_ROLES = ['Lead DSL', 'Principal', 'Senior Leadership'];
 // Roles assignable from the "create/edit user" form today.
-const VALID_ROLES = ['Teacher', 'SENDCO', 'Pastoral Lead', 'Deputy DSL', 'Head of Primary', 'Head of Secondary', 'Head of Extra', 'Lead DSL', 'Principal'];
+const VALID_ROLES = ['Teacher', 'SENDCO', 'School Psychologist', 'Deputy DSL', 'Head of Primary', 'Head of Secondary', 'Head of Extra', 'Lead DSL', 'Principal'];
 
 const CODE_MIN_LENGTH = 6;
 const CODE_MAX_LENGTH = 24;
@@ -4594,7 +4597,11 @@ function validateCode(value){
   if(!/^[\\x21-\\x7E]+$/.test(trimmed)) return { valid:false, error:'Access code contains invalid characters' };
   return { valid:true, value:trimmed };
 }
+// Accept the former role name in saved accounts and case assignments.
+function normalizeRole(role){ return role === 'Pastoral Lead' ? 'School Psychologist' : role; }
+function normalizeAssignee(value){ return (Array.isArray(value) ? value : String(value||'').split(',')).map(function(role){ return normalizeRole(String(role).trim()); }).filter(Boolean).join(', '); }
 function validateRole(value){
+  value = normalizeRole(value);
   if(VALID_ROLES.indexOf(value) < 0) return { valid:false, error:'Role must be one of: ' + VALID_ROLES.join(', ') };
   return { valid:true, value:value };
 }
@@ -4777,7 +4784,7 @@ function requireSession(token){
   }
   // Sliding expiry: any authenticated call extends the idle window.
   cache.put(key, raw, SESSION_TTL_SECONDS);
-  return { ok:true, user:{ id:sess.userId, firstName:sess.firstName, lastName:sess.lastName, role:sess.role }, cacheKey:key };
+  return { ok:true, user:{ id:sess.userId, firstName:sess.firstName, lastName:sess.lastName, role:normalizeRole(sess.role) }, cacheKey:key };
 }
 function logoutAction(token){
   const t = norm(token);
@@ -4855,7 +4862,7 @@ function loadUsers(){
     const r = vals[i];
     if(String(r.join('')).trim()==='') continue;
     users.push({
-      id: r[0], rowId: i+1, firstName: r[1], lastName: r[2], role: r[3] || 'Teacher', email: r[4] || '',
+      id: r[0], rowId: i+1, firstName: r[1], lastName: r[2], role: normalizeRole(r[3] || 'Teacher'), email: r[4] || '',
       codeHash: r[5] || '', active: String(r[6]).toLowerCase() !== 'false',
       createdAt: r[7] || '', updatedAt: r[8] || '', lastLogin: r[9] || ''
     });
@@ -4910,7 +4917,7 @@ function isAdminRole(role){ return ADMIN_ROLES.indexOf(role) >= 0; }
 function isReportRole(role){ return REPORT_ROLES.indexOf(role) >= 0; }
 function isSendCaseRole(role){ return SEND_CASE_ROLES.indexOf(role) >= 0; }
 // Phase heads (and Head of Extra, who spans both phases) need read access to
-// the user list so they can assign cases to SENDCO/Pastoral Lead/etc.
+// the user list so they can assign cases to SENDCO/School Psychologist/etc.
 // school-wide (see index.html's loadAppUsers / IS_USER_MANAGER) — but not
 // full User Management (create/edit/delete accounts, regenerate codes),
 // which stays admin-only via isAdminRole.
@@ -4926,14 +4933,14 @@ function findUserByName(name){
 // and in index.html still compares against VALID_ROLES' fixed strings (e.g.
 // role==='Lead DSL'), and that's also what's stored on each user row and on
 // a case's assignee field. This only overlays what a role is CALLED in the
-// UI and in notification emails, so a super user can rename "Pastoral Lead"
+// UI and in notification emails, so a super user can rename "School Psychologist"
 // to whatever this school actually calls that position without touching any
 // permission logic, stored data, or existing user/case rows.
 function loadRoleLabels(){
   let stored = {};
   try { stored = JSON.parse(PropertiesService.getScriptProperties().getProperty('ROLE_LABELS') || '{}'); } catch(e) {}
   const out = {};
-  VALID_ROLES.forEach(function(r){ out[r] = (stored && stored[r]) ? stored[r] : r; });
+  VALID_ROLES.forEach(function(r){ out[r] = normalizeRole((stored && stored[r]) ? stored[r] : r); });
   return out;
 }
 function getRoleLabels(){
@@ -5128,9 +5135,11 @@ function deleteUser(sessionUser, id){
 // ASSIGNABLE_ROLES / renderCaseAssignee) — so everyone active in that role
 // gets notified, not a single named user.
 function usersInRoles(roles){
+  roles = roles.map(normalizeRole);
   return loadUsers().filter(function(u){ return u.active && u.email && roles.indexOf(u.role) >= 0; });
 }
 function notifyAssignee(role, caseId, studentName, category, notifier){
+  role = normalizeRole(role);
   const users = usersInRoles([role]); // routing stays on the raw permission key
   const roleName = loadRoleLabels()[role] || role; // only the email text uses the custom display name
   users.forEach(function(u){
@@ -5344,7 +5353,7 @@ function getCasesFresh(){
       const c = {
         id: row[0] || ('c_'+i), date:row[1]||'', reporter:row[2]||'', studentId:row[3]||'', studentName:row[4]||'',
         year:row[5]||'', category:row[6]||'', subcategory:row[7]||'', risk:row[8]||'Medium', status:row[9]||'New',
-        description:row[10]||'', location:row[11]||'', assignee:row[12]||'', department:row[13]||'',
+        description:row[10]||'', location:row[11]||'', assignee:normalizeAssignee(row[12]), department:row[13]||'',
         strategies:parseJsonCell(row[14],[]), agencies:parseJsonCell(row[15],[]), bodyMap:parseJsonCell(row[16],[]),
         timeline:parseJsonCell(row[17],[]), actions:parseJsonCell(row[18],[]), strategyImpactPositive:row[19]||'',
         strategyImpactNone:row[20]||'', sendcoReason:row[21]||'', strategyDuration:row[22]||'',
@@ -5366,7 +5375,7 @@ function getCasesFresh(){
     const legacyId = row[0] || ('legacy_'+(i+1));
     byId[legacyId] = { id:legacyId, rowId:i+1, timestamp:row[0], reporterName:row[1], studentId:'', studentName:row[5],
       grade:row[6], category:row[11], severity:row[12]||'', description:row[12], location:'', status:row[20]||'New',
-      assignee:row[21]||'', agencies:row[22]||'', linkedCaseIds:[], studentClass:'', meetings:[] };
+      assignee:normalizeAssignee(row[21]), agencies:row[22]||'', linkedCaseIds:[], studentClass:'', meetings:[] };
   }
   return { ok:true, status:'success', data: Object.keys(byId).map(function(k){ return byId[k]; }) };
 }
@@ -5399,7 +5408,7 @@ function normalizeCasePayload(p){
     id: p.id || ('c_'+Utilities.getUuid().replace(/-/g,'').slice(0,12)), date:p.date||nowIso(), reporter:p.reporter||'',
     studentId:p.studentId||'', studentName:p.studentName||'', year:p.year||'', category:p.category||'',
     subcategory:p.subcategory||'', risk:p.risk||'Medium', status:p.status||'New', description:p.description||'',
-    location:p.location||'', assignee:p.assignee||'', department:p.department||'',
+    location:p.location||'', assignee:normalizeAssignee(p.assignee), department:p.department||'',
     strategies: Array.isArray(p.strategies) ? p.strategies : String(p.strategies||'').split(',').filter(Boolean),
     agencies: Array.isArray(p.agencies) ? p.agencies : String(p.agencies||'').split(',').filter(Boolean),
     bodyMap: Array.isArray(p.bodyMap) ? p.bodyMap : [], timeline: Array.isArray(p.timeline) ? p.timeline : [],
@@ -5947,7 +5956,7 @@ async function doCodeLogin(){
     // session's lifetime (never persisted) — the server issued an opaque
     // token, which is what gets stored and sent on every future call.
     ME.name = [data.user.firstName, data.user.lastName].filter(Boolean).join(' ') || 'User';
-    ME.role = data.user.role;
+    ME.role = normalizeRole(data.user.role);
     ME.userId = data.user.id;
     ME.code = code;
     ME.token = data.token;
@@ -6020,7 +6029,7 @@ function checkSavedAuth(){
   try{
     const s=JSON.parse(raw);
     if(s.expires && new Date(s.expires)>new Date() && s.token){
-      ME.name=s.name||''; ME.role=s.role||'Teacher';
+      ME.name=s.name||''; ME.role=normalizeRole(s.role||'Teacher');
       ME.userId=s.userId||''; ME.token=s.token||'';
       return true;
     }
@@ -6329,10 +6338,10 @@ async function renderUsers(){
     if(!CAN_USE_APPS_SCRIPT()) throw new Error('Apps Script URL not configured');
     const data = await scriptCall('listUsers', {});
     if(!data.ok){ el.innerHTML=emptyState('alert-circle','Could not load users',data.error||''); return; }
-    const users=data.users;
+    const users=data.users.map(u=>({...u, role:normalizeRole(u.role)}));
     APP_USERS = users.map(u => `${u.firstName} ${u.lastName}`.trim()).filter(Boolean);
     if(!users.length){ el.innerHTML=emptyState('users','No users yet','Create the first user to give them access to the platform.'); return; }
-    const roleColor={'Lead DSL':'crit','Head of Primary':'crit','Head of Secondary':'crit','Head of Extra':'crit','Principal':'crit','Deputy DSL':'high','SENDCO':'med','Pastoral Lead':'med','Teacher':'low'};
+    const roleColor={'Lead DSL':'crit','Head of Primary':'crit','Head of Secondary':'crit','Head of Extra':'crit','Principal':'crit','Deputy DSL':'high','SENDCO':'med','School Psychologist':'med','Teacher':'low'};
     el.innerHTML=users.map(u=>{
       const full=`${esc(u.firstName)} ${esc(u.lastName)}`;
       const rc=roleColor[u.role]||'low';
@@ -6368,7 +6377,7 @@ async function renderUsers(){
 }
 
 // Lets a super user (Lead DSL/Principal) relabel any of the fixed role
-// slots — e.g. "Pastoral Lead" → whatever this school actually calls that
+// slots — e.g. "School Psychologist" → whatever this school actually calls that
 // position. Purely cosmetic: ASSIGNABLE_ROLES/VALID_ROLES, every role===
 // permission check, and every stored user/case row keep using the original
 // key underneath; only roleLabel()'s display text changes.

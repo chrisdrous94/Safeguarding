@@ -29,7 +29,7 @@ const SEND_CASE_ROLES = ['Lead DSL', 'Deputy DSL', 'Principal', 'SENDCO'];
 // existing user saved under it must keep working.
 const ADMIN_ROLES = ['Lead DSL', 'Principal', 'Senior Leadership'];
 // Roles assignable from the "create/edit user" form today.
-const VALID_ROLES = ['Teacher', 'SENDCO', 'Pastoral Lead', 'Deputy DSL', 'Head of Primary', 'Head of Secondary', 'Head of Extra', 'Lead DSL', 'Principal'];
+const VALID_ROLES = ['Teacher', 'SENDCO', 'School Psychologist', 'Deputy DSL', 'Head of Primary', 'Head of Secondary', 'Head of Extra', 'Lead DSL', 'Principal'];
 
 const CODE_MIN_LENGTH = 6;
 const CODE_MAX_LENGTH = 24;
@@ -76,7 +76,11 @@ function validateCode(value){
   if(!/^[\x21-\x7E]+$/.test(trimmed)) return { valid:false, error:'Access code contains invalid characters' };
   return { valid:true, value:trimmed };
 }
+// Accept the former role name in saved accounts and case assignments.
+function normalizeRole(role){ return role === 'Pastoral Lead' ? 'School Psychologist' : role; }
+function normalizeAssignee(value){ return (Array.isArray(value) ? value : String(value||'').split(',')).map(function(role){ return normalizeRole(String(role).trim()); }).filter(Boolean).join(', '); }
 function validateRole(value){
+  value = normalizeRole(value);
   if(VALID_ROLES.indexOf(value) < 0) return { valid:false, error:'Role must be one of: ' + VALID_ROLES.join(', ') };
   return { valid:true, value:value };
 }
@@ -290,7 +294,7 @@ function requireSession(token){
   const previousLastSeenAt = Number(sess.lastSeenAt) || 0;
   sess.lastSeenAt = now;
   writeSessionRecord(key, sess, !loaded.fromCache || !previousLastSeenAt || (now - previousLastSeenAt) >= SESSION_STORE_REFRESH_MS);
-  return { ok:true, user:{ id:sess.userId, firstName:sess.firstName, lastName:sess.lastName, role:sess.role }, cacheKey:key };
+  return { ok:true, user:{ id:sess.userId, firstName:sess.firstName, lastName:sess.lastName, role:normalizeRole(sess.role) }, cacheKey:key };
 }
 function logoutAction(token){
   const t = norm(token);
@@ -368,7 +372,7 @@ function loadUsers(){
     const r = vals[i];
     if(String(r.join('')).trim()==='') continue;
     users.push({
-      id: r[0], rowId: i+1, firstName: r[1], lastName: r[2], role: r[3] || 'Teacher', email: r[4] || '',
+      id: r[0], rowId: i+1, firstName: r[1], lastName: r[2], role: normalizeRole(r[3] || 'Teacher'), email: r[4] || '',
       codeHash: r[5] || '', active: String(r[6]).toLowerCase() !== 'false',
       createdAt: r[7] || '', updatedAt: r[8] || '', lastLogin: r[9] || ''
     });
@@ -423,7 +427,7 @@ function isAdminRole(role){ return ADMIN_ROLES.indexOf(role) >= 0; }
 function isReportRole(role){ return REPORT_ROLES.indexOf(role) >= 0; }
 function isSendCaseRole(role){ return SEND_CASE_ROLES.indexOf(role) >= 0; }
 // Phase heads (and Head of Extra, who spans both phases) need read access to
-// the user list so they can assign cases to SENDCO/Pastoral Lead/etc.
+// the user list so they can assign cases to SENDCO/School Psychologist/etc.
 // school-wide (see index.html's loadAppUsers / IS_USER_MANAGER) — but not
 // full User Management (create/edit/delete accounts, regenerate codes),
 // which stays admin-only via isAdminRole.
@@ -439,14 +443,14 @@ function findUserByName(name){
 // and in index.html still compares against VALID_ROLES' fixed strings (e.g.
 // role==='Lead DSL'), and that's also what's stored on each user row and on
 // a case's assignee field. This only overlays what a role is CALLED in the
-// UI and in notification emails, so a super user can rename "Pastoral Lead"
+// UI and in notification emails, so a super user can rename "School Psychologist"
 // to whatever this school actually calls that position without touching any
 // permission logic, stored data, or existing user/case rows.
 function loadRoleLabels(){
   let stored = {};
   try { stored = JSON.parse(PropertiesService.getScriptProperties().getProperty('ROLE_LABELS') || '{}'); } catch(e) {}
   const out = {};
-  VALID_ROLES.forEach(function(r){ out[r] = (stored && stored[r]) ? stored[r] : r; });
+  VALID_ROLES.forEach(function(r){ out[r] = normalizeRole((stored && stored[r]) ? stored[r] : r); });
   return out;
 }
 function getRoleLabels(){
@@ -641,9 +645,11 @@ function deleteUser(sessionUser, id){
 // ASSIGNABLE_ROLES / renderCaseAssignee) — so everyone active in that role
 // gets notified, not a single named user.
 function usersInRoles(roles){
+  roles = roles.map(normalizeRole);
   return loadUsers().filter(function(u){ return u.active && u.email && roles.indexOf(u.role) >= 0; });
 }
 function notifyAssignee(role, caseId, studentName, category, notifier){
+  role = normalizeRole(role);
   const users = usersInRoles([role]); // routing stays on the raw permission key
   const roleName = loadRoleLabels()[role] || role; // only the email text uses the custom display name
   users.forEach(function(u){
@@ -857,7 +863,7 @@ function getCasesFresh(){
       const c = {
         id: row[0] || ('c_'+i), date:row[1]||'', reporter:row[2]||'', studentId:row[3]||'', studentName:row[4]||'',
         year:row[5]||'', category:row[6]||'', subcategory:row[7]||'', risk:row[8]||'Medium', status:row[9]||'New',
-        description:row[10]||'', location:row[11]||'', assignee:row[12]||'', department:row[13]||'',
+        description:row[10]||'', location:row[11]||'', assignee:normalizeAssignee(row[12]), department:row[13]||'',
         strategies:parseJsonCell(row[14],[]), agencies:parseJsonCell(row[15],[]), bodyMap:parseJsonCell(row[16],[]),
         timeline:parseJsonCell(row[17],[]), actions:parseJsonCell(row[18],[]), strategyImpactPositive:row[19]||'',
         strategyImpactNone:row[20]||'', sendcoReason:row[21]||'', strategyDuration:row[22]||'',
@@ -879,7 +885,7 @@ function getCasesFresh(){
     const legacyId = row[0] || ('legacy_'+(i+1));
     byId[legacyId] = { id:legacyId, rowId:i+1, timestamp:row[0], reporterName:row[1], studentId:'', studentName:row[5],
       grade:row[6], category:row[11], severity:row[12]||'', description:row[12], location:'', status:row[20]||'New',
-      assignee:row[21]||'', agencies:row[22]||'', linkedCaseIds:[], studentClass:'', meetings:[] };
+      assignee:normalizeAssignee(row[21]), agencies:row[22]||'', linkedCaseIds:[], studentClass:'', meetings:[] };
   }
   return { ok:true, status:'success', data: Object.keys(byId).map(function(k){ return byId[k]; }) };
 }
@@ -912,7 +918,7 @@ function normalizeCasePayload(p){
     id: p.id || ('c_'+Utilities.getUuid().replace(/-/g,'').slice(0,12)), date:p.date||nowIso(), reporter:p.reporter||'',
     studentId:p.studentId||'', studentName:p.studentName||'', year:p.year||'', category:p.category||'',
     subcategory:p.subcategory||'', risk:p.risk||'Medium', status:p.status||'New', description:p.description||'',
-    location:p.location||'', assignee:p.assignee||'', department:p.department||'',
+    location:p.location||'', assignee:normalizeAssignee(p.assignee), department:p.department||'',
     strategies: Array.isArray(p.strategies) ? p.strategies : String(p.strategies||'').split(',').filter(Boolean),
     agencies: Array.isArray(p.agencies) ? p.agencies : String(p.agencies||'').split(',').filter(Boolean),
     bodyMap: Array.isArray(p.bodyMap) ? p.bodyMap : [], timeline: Array.isArray(p.timeline) ? p.timeline : [],
